@@ -118,6 +118,49 @@ test("mascot is in the header with the count", () => {
   assert.match(html, /<div id="needs-you" data-count="4">\s*<svg class="mascot/);
 });
 
+test("the needs-you list is its own short panel, not part of the header", () => {
+  const src = fakeSource({
+    attention: () => [{ key: "1", title: "Reply to Ana", reason: "waiting on your reply", url: "https://x.example/1" }],
+    panels: () => [panel()],
+  });
+  const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
+  const header = html.match(/<header>[\s\S]*?<\/header>/)![0];
+  assert.ok(!header.includes("Reply to Ana"));
+  assert.ok(header.includes("<strong>1</strong>"));
+  const aside = html.match(/<aside id="attention" class="panel tint-accent" data-size="short">[\s\S]*?<\/aside>/)![0];
+  assert.ok(aside.includes('<a href="https://x.example/1">Reply to Ana</a>'));
+  assert.ok(html.indexOf('<aside id="attention"') < html.indexOf("<section"));
+});
+
+test("with nothing to do the needs-you panel says so", () => {
+  const html = renderPage({ view, entries: [] });
+  const aside = html.match(/<aside id="attention"[\s\S]*?<\/aside>/)![0];
+  assert.ok(aside.includes("Nothing needs you"));
+  assert.ok(!aside.includes("<ol"));
+});
+
+test("a panel can ask to be short; the default is tall", () => {
+  const src = fakeSource({
+    panels: () => [
+      { id: "small", title: "S", tint: "butter", html: "", size: "short" },
+      { id: "big", title: "B", tint: "mint", html: "" },
+    ],
+  });
+  const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
+  assert.match(html, /<section id="small" class="panel tint-butter" data-source="fake" data-stale="false" data-size="short">/);
+  assert.match(html, /<section id="big" class="panel tint-mint" data-source="fake" data-stale="false" data-size="tall">/);
+});
+
+test("the page fits the window and panels scroll inside themselves", () => {
+  const themeDir = fileURLToPath(new URL("./theme/", import.meta.url));
+  const css = readdirSync(themeDir)
+    .map((f) => readFileSync(join(themeDir, f), "utf8"))
+    .join("\n");
+  for (const needle of ["height: 100dvh", "overflow: hidden", "overflow-y: auto", '[data-size="short"]', "grid-auto-flow: column dense"]) {
+    assert.ok(css.includes(needle), needle);
+  }
+});
+
 test("theme defines tokens, dark mode and the phone breakpoint", () => {
   const themeDir = fileURLToPath(new URL("./theme/", import.meta.url));
   const css = readdirSync(themeDir)

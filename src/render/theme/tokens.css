@@ -22,11 +22,12 @@
   --warn: #b9770e;
   --bad: #c7385f;
 
-  --ball: #cdbcff;
-  --ball-edge: #8f77d9;
-  --stand: #c99a5b;
+  --ball: #dccfff;
+  --ball-edge: #ab96ee;
+  --stand: #d9ae76;
+  --face: #4a3566;
 
-  --radius: 16px;
+  --radius: 14px;
   --font: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", sans-serif;
 }
 
@@ -51,8 +52,9 @@
     --warn: #f0c36b;
     --bad: #ff8fa9;
 
-    --ball: #6d5bb5;
-    --ball-edge: #b9a8ff;
-    --stand: #8a6a3f;
+    --ball: #8f7ed6;
+    --ball-edge: #c9bbff;
+    --stand: #9a7748;
+    --face: #241b40;
   }
 }

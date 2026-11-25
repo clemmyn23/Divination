@@ -36,7 +36,8 @@ function section(panel: Panel, entry: PageEntry, view: View): string {
   const { source, envelope } = entry;
   const stale = isStale(envelope, view);
   const error = envelope.ok ? "" : `\n<p class="source-error">${esc(envelope.error ?? "failed")}</p>`;
-  return `<section id="${esc(panel.id)}" class="panel tint-${esc(panel.tint)}" data-source="${esc(source.id)}" data-stale="${stale}">
+  const size = panel.size === "short" ? "short" : "tall";
+  return `<section id="${esc(panel.id)}" class="panel tint-${esc(panel.tint)}" data-source="${esc(source.id)}" data-stale="${stale}" data-size="${size}">
 <div class="panel-head">
 <h2>${esc(panel.title)}</h2>
 <p class="updated">${esc(updatedText(envelope, view))}${stale ? ' <span class="dozing">dozing</span>' : ""}</p>
@@ -56,12 +57,22 @@ function sectionsFor(entry: PageEntry, view: View): string[] {
   return source.panels(envelope.data, view).map((panel) => section(panel, entry, view));
 }
 
-function attentionList(items: AttentionItem[]): string {
-  if (items.length === 0) return "";
+/** Everything that is waiting on you, from every source, as the first panel on the page. */
+function attentionPanel(items: AttentionItem[]): string {
   const rows = items
     .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${esc(it.reason)}</span></li>`)
     .join("\n");
-  return `<ol class="attention">\n${rows}\n</ol>`;
+  const body =
+    items.length === 0 ? '<p class="quiet">Nothing needs you. Enjoy the calm.</p>' : `<ol class="attention">\n${rows}\n</ol>`;
+  return `<aside id="attention" class="panel tint-accent" data-size="short">
+<div class="panel-head">
+<h2>Needs you</h2>
+<p class="updated">${items.length}</p>
+</div>
+<div class="panel-body">
+${body}
+</div>
+</aside>`;
 }
 
 function dateLine(view: View): string {
@@ -73,9 +84,10 @@ function dateLine(view: View): string {
   }).format(new Date(view.now));
 }
 
-/** The mascot and the count, beside the title. */
+/** The mascot and the count, in the top bar. */
 export function needsYouBadge(count: number): string {
-  const label = count === 0 ? "Nothing needs you" : count === 1 ? "1 thing needs you" : `${count} things need you`;
+  const label =
+    count === 0 ? "All clear" : `<strong>${count}</strong> ${count === 1 ? "thing needs" : "things need"} you`;
   return `<div id="needs-you" data-count="${count}">
 ${mascotSvg(count)}
 <p class="needs-label">${label}</p>
@@ -114,9 +126,9 @@ ${styles()}
 <p class="today">${esc(dateLine(view))}</p>
 </div>
 ${needsYouBadge(attention.length)}
-${attentionList(attention)}
 </header>
 <main>
+${attentionPanel(attention)}
 ${sections.join("\n")}
 </main>
 <script>

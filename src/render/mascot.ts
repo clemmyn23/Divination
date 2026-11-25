@@ -7,41 +7,36 @@ export function mascotMood(needsYou: number): Mood {
   return "alarmed";
 }
 
-const EYES: Record<Mood, string> = {
-  // closed arcs
-  sleepy: `<path d="M41 56 q7 6 14 0" /><path d="M65 56 q7 6 14 0" />`,
-  // dots
-  awake: `<circle cx="48" cy="56" r="3.5" /><circle cx="72" cy="56" r="3.5" />`,
-  // wide, with a sparkle
-  alarmed: `<circle cx="48" cy="55" r="7" /><circle cx="72" cy="55" r="7" /><circle class="glint" cx="50.5" cy="52.5" r="2.2" /><circle class="glint" cx="74.5" cy="52.5" r="2.2" />`,
-};
-
-const MOUTH: Record<Mood, string> = {
-  sleepy: `<path d="M55 66 q5 3 10 0" />`,
-  awake: `<path d="M53 65 q7 7 14 0" />`,
-  alarmed: `<ellipse cx="60" cy="67" rx="4" ry="5" />`,
+// The face is small, low on the ball and wide-set: dot eyes, a little mouth, soft cheeks.
+// Eyes are never bigger than a dot, whatever the mood.
+const FACE: Record<Mood, string> = {
+  // eyes closed in two soft curves, a tiny smile
+  sleepy: `<path class="lid" d="M38 66 q5 4 10 0" /><path class="lid" d="M72 66 q5 4 10 0" /><path class="mouth" d="M56 71 q4 3 8 0" />`,
+  // dot eyes and a smile
+  awake: `<circle class="eye" cx="43" cy="66" r="3.2" /><circle class="eye" cx="77" cy="66" r="3.2" /><path class="mouth" d="M55 69 q5 6 10 0" />`,
+  // the same dot eyes, worried brows and a wobbly mouth
+  alarmed: `<path class="brow" d="M37 58 l10 -3" /><path class="brow" d="M83 58 l-10 -3" /><circle class="eye" cx="43" cy="66" r="3.4" /><circle class="eye" cx="77" cy="66" r="3.4" /><path class="mouth" d="M53 72 q3.5 -4 7 0 q3.5 4 7 0" />`,
 };
 
 const EXTRAS: Record<Mood, string> = {
-  sleepy: `<text class="zzz" x="92" y="26">z</text><text class="zzz" x="101" y="15">z</text>`,
-  awake: `<path class="star" d="M100 20 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" />`,
-  alarmed: `<path class="star" d="M100 18 l2.5 6 6 2.5 -6 2.5 -2.5 6 -2.5 -6 -6 -2.5 6 -2.5z" /><path class="star" d="M16 30 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2z" />`,
+  sleepy: `<text class="zzz" x="93" y="24">z</text><text class="zzz" x="102" y="13">z</text>`,
+  awake: `<path class="star" d="M101 16 l2 5 5 2 -5 2 -2 5 -2 -5 -5 -2 5 -2z" />`,
+  alarmed: `<path class="drop" d="M97 30 q5 8 0 11 q-5 -3 0 -11z" /><path class="star" d="M17 24 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2z" />`,
 };
 
-/** The crystal ball, drawn inline. Its face follows the mood and the count sits inside it. */
+/** The crystal ball, drawn inline. Its face follows the mood; the page shows the count beside it. */
 export function mascotSvg(needsYou: number): string {
   const mood = mascotMood(needsYou);
   const label = `${needsYou} ${needsYou === 1 ? "thing needs" : "things need"} you`;
   return `<svg class="mascot mascot-${mood}" viewBox="0 0 120 130" width="120" height="130" role="img" aria-label="${label}">
-<path class="stand" d="M34 104 h52 l8 18 h-68z" />
-<rect class="stand-top" x="38" y="98" width="44" height="9" rx="4.5" />
+<path class="stand" d="M36 106 h48 l7 16 h-62z" />
+<rect class="stand-top" x="40" y="100" width="40" height="8" rx="4" />
 <circle class="ball" cx="60" cy="60" r="44" />
-<path class="shine" d="M30 44 q6 -16 22 -22" />
-<ellipse class="cheek" cx="38" cy="66" rx="6" ry="3.5" />
-<ellipse class="cheek" cx="82" cy="66" rx="6" ry="3.5" />
-<g class="eyes">${EYES[mood]}</g>
-<g class="mouth">${MOUTH[mood]}</g>
-<text class="mascot-count" x="60" y="92" text-anchor="middle">${needsYou}</text>
+<ellipse class="glow" cx="60" cy="50" rx="30" ry="24" />
+<path class="shine" d="M31 42 q6 -14 19 -19" />
+<ellipse class="cheek" cx="33" cy="73" rx="6.5" ry="4" />
+<ellipse class="cheek" cx="87" cy="73" rx="6.5" ry="4" />
+<g class="face">${FACE[mood]}</g>
 <g class="extras">${EXTRAS[mood]}</g>
 </svg>`;
 }

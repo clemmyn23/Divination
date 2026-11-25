@@ -100,6 +100,8 @@ export interface Panel {
   id: string;
   title: string;
   tint: Tint;
+  /** How much room the panel asks for. A short panel shares a column with another; the default is tall. */
+  size?: "short" | "tall";
   /** Already-escaped HTML. Sources escape their own content. */
   html: string;
 }

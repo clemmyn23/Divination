@@ -1,14 +1,29 @@
-/* Page structure, header and controls. Colours come from tokens.css. */
+/*
+ * Page structure, top bar and controls. Colours come from tokens.css.
+ *
+ * The page is exactly one window tall and never scrolls. The top bar takes what it
+ * needs; the panels share the rest and scroll inside themselves.
+ */
 
 * {
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+}
+
 body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100dvh;
   margin: 0;
-  padding: 24px;
+  padding: 10px 14px 14px;
+  overflow: hidden;
   font-family: var(--font);
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.35;
   color: var(--ink);
   background-color: var(--paper);
   background-image: radial-gradient(var(--speck) 1.2px, transparent 1.2px);
@@ -18,48 +33,79 @@ body {
 a {
   color: inherit;
   text-decoration-color: var(--accent);
-  text-decoration-thickness: 2px;
-  text-underline-offset: 3px;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 2px;
 }
 
 a:hover {
   color: var(--accent);
 }
 
-header,
-main {
-  max-width: 1100px;
-  margin: 0 auto;
-}
+/* Top bar: mascot, title, count on the left; controls on the right. */
 
 header {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas:
-    "controls controls"
-    "ball     masthead"
-    "ball     attention";
-  column-gap: 20px;
-  align-items: start;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-/* Controls: a pill at the top right. */
+#needs-you {
+  order: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.masthead {
+  order: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-right: auto;
+  padding-left: 10px;
+  border-left: 1.5px solid var(--line);
+}
 
 #controls {
-  grid-area: controls;
-  justify-self: end;
+  order: 3;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
-  padding: 6px 8px 6px 14px;
+  padding: 4px 5px 4px 12px;
   border-radius: 999px;
   background: var(--card);
   box-shadow: var(--shadow);
 }
 
+h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+}
+
+.today {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.needs-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.needs-label strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
 #live-status {
   order: -1;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--ink-soft);
 }
 
@@ -69,9 +115,9 @@ header {
 
 button {
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  padding: 6px 14px;
+  padding: 4px 12px;
   border: 1.5px solid var(--line);
   border-radius: 999px;
   color: var(--ink);
@@ -104,76 +150,30 @@ button[data-enrich]::before {
   content: "✨ ";
 }
 
-/* Masthead, mascot and the needs-you list. */
-
-.masthead {
-  grid-area: masthead;
-  align-self: end;
-  padding-top: 8px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 34px;
-  letter-spacing: -0.02em;
-}
-
-.today {
-  margin: 0;
-  color: var(--ink-soft);
-}
-
-#needs-you {
-  grid-area: ball;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-
-.needs-label {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--ink-soft);
-}
-
-.attention {
-  grid-area: attention;
-  margin: 10px 0 0;
-  padding-left: 1.5em;
-}
-
-.attention li {
-  margin: 3px 0;
-}
-
-.attention li::marker {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.reason {
-  color: var(--ink-soft);
-  font-size: 14px;
-}
-
-/* The mascot. */
+/* The mascot: a small, soft crystal ball. */
 
 .mascot {
   display: block;
+  flex: none;
+  width: 42px;
+  height: 46px;
 }
 
 .mascot .ball {
   fill: var(--ball);
   stroke: var(--ball-edge);
-  stroke-width: 3;
+  stroke-width: 2.5;
+}
+
+.mascot .glow {
+  fill: #ffffff;
+  fill-opacity: 0.28;
 }
 
 .mascot .shine {
   fill: none;
   stroke: #ffffff;
-  stroke-opacity: 0.75;
+  stroke-opacity: 0.85;
   stroke-width: 4;
   stroke-linecap: round;
 }
@@ -185,74 +185,82 @@ h1 {
 
 .mascot .cheek {
   fill: var(--accent);
-  fill-opacity: 0.45;
+  fill-opacity: 0.4;
 }
 
-.mascot .eyes,
-.mascot .mouth {
-  fill: var(--ink);
-  stroke: var(--ink);
-  stroke-width: 2.5;
-  stroke-linecap: round;
+.mascot .eye {
+  fill: var(--face);
 }
 
-.mascot-sleepy .eyes,
-.mascot-sleepy .mouth,
-.mascot-awake .mouth {
+.mascot .lid,
+.mascot .mouth,
+.mascot .brow {
   fill: none;
-}
-
-.mascot .glint {
-  fill: #ffffff;
-  stroke: none;
-}
-
-.mascot-count {
-  font-family: var(--font);
-  font-size: 20px;
-  font-weight: 800;
-  fill: var(--ink);
+  stroke: var(--face);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .mascot .star {
   fill: var(--accent);
 }
 
+.mascot .drop {
+  fill: #8fd0ff;
+}
+
 .mascot .zzz {
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   fill: var(--ink-soft);
 }
 
-/* Panels grid. */
+/*
+ * Panels: two rows, filled a column at a time. A tall panel takes a whole column;
+ * two short panels share one. Every column is the same width.
+ */
 
-/* Two flowing columns, so a short panel does not leave a hole beside a tall one. */
 main {
-  column-count: 2;
-  column-gap: 18px;
-  margin-top: 28px;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 10px;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  grid-auto-flow: column dense;
+  grid-auto-columns: minmax(0, 1fr);
 }
 
+/* Narrower windows: two columns, every panel the same height. */
+@media (max-width: 1099px) {
+  main {
+    grid-template-rows: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: row;
+    grid-auto-rows: minmax(0, 1fr);
+  }
+}
+
+/* Phones: one column. Here the page itself scrolls, and each panel is capped. */
 @media (max-width: 640px) {
   body {
-    padding: 16px;
+    display: block;
+    height: auto;
+    overflow: auto;
+    padding: 10px;
   }
 
   header {
-    column-gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
   }
 
-  h1 {
-    font-size: 26px;
-  }
-
-  .mascot {
-    width: 84px;
-    height: 91px;
+  .today {
+    display: none;
   }
 
   main {
-    column-count: 1;
+    display: block;
   }
 }
