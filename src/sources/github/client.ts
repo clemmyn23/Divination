@@ -44,7 +44,7 @@ function nextLink(header: string | null): string | undefined {
  */
 export function createGithub(ctx: Context) {
   const host = ctx.config.github.host;
-  if (!host) throw new Error("github.host is not set in config/local.json");
+  if (!host) throw new Error("github.host is not set in config/local.yaml");
   const origin = `https://${host}/`;
   const base = `${origin}api/v3`;
 

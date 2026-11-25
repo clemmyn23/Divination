@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { parse } from "yaml";
 import type { Config } from "./types.ts";
 
 export class ConfigError extends Error {
@@ -40,11 +41,15 @@ function readConfigFile(path: string, label: string, required: boolean): unknown
     }
     throw e;
   }
+  let value: unknown;
   try {
-    return JSON.parse(text);
+    value = parse(text);
   } catch (e) {
-    throw new ConfigError(`${label} is not valid JSON: ${(e as Error).message}`);
+    throw new ConfigError(`${label} is not valid YAML: ${(e as Error).message}`);
   }
+  if (value === null || value === undefined) return {}; // empty, or only comments
+  if (!isObject(value)) throw new ConfigError(`${label} must hold settings, as "name: value" lines`);
+  return value;
 }
 
 function problemsIn(config: Config): string[] {
@@ -120,13 +125,12 @@ function problemsIn(config: Config): string[] {
 }
 
 /**
- * Load `config/defaults.json` with `config/local.json` merged over it.
- * `local.json` is optional. Every problem found is listed in one error.
+ * Load `config/defaults.yaml` with `config/local.yaml` merged over it.
+ * `local.yaml` is optional. Every problem found is listed in one error.
  */
 export function loadConfig(root: string): Config {
-  const defaults = readConfigFile(join(root, "config", "defaults.json"), "config/defaults.json", true);
-  const local = readConfigFile(join(root, "config", "local.json"), "config/local.json", false);
-  if (!isObject(local)) throw new ConfigError("config/local.json must hold a JSON object");
+  const defaults = readConfigFile(join(root, "config", "defaults.yaml"), "config/defaults.yaml", true);
+  const local = readConfigFile(join(root, "config", "local.yaml"), "config/local.yaml", false);
 
   const config = deepMerge(defaults, local) as Config;
   const problems = problemsIn(config);

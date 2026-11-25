@@ -190,7 +190,7 @@ test("doctor passes when gh is logged in and the API answers", async () => {
 test("doctor says how to fix a missing host or login", async () => {
   const noHost = await github.doctor(contextWith({}, { http: fakeHttp({}), exec: fakeExec({}) }));
   assert.deepEqual(noHost.map((c) => [c.name, c.ok]), [["host", false]]);
-  assert.match(noHost[0]!.fix!, /config\/local\.json/);
+  assert.match(noHost[0]!.fix!, /config\/local\.yaml/);
 
   const { ctx } = setup();
   const noLogin = await github.doctor({ ...ctx, exec: fakeExec({ "gh auth token": { code: 1 } }) });

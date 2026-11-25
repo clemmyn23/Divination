@@ -34,7 +34,7 @@ function validate(data: unknown): string[] {
 async function doctor(ctx: Context): Promise<Check[]> {
   const host = ctx.config.github.host;
   if (!host) {
-    return [{ name: "host", ok: false, detail: "github.host is not set", fix: 'set "github": { "host": "…" } in config/local.json' }];
+    return [{ name: "host", ok: false, detail: "github.host is not set", fix: "set github.host in config/local.yaml" }];
   }
   const checks: Check[] = [{ name: "host", ok: true, detail: host }];
 

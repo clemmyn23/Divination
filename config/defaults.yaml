@@ -1,0 +1,79 @@
+# Every setting, with its default. Put your own in config/local.yaml, which is merged
+# over this file: settings merge key by key, and a list replaces the whole default list.
+
+me:
+  name: ""
+  email: ""
+  timezone: Australia/Sydney
+
+# Which panels to show, by source id.
+sources: [calendar, github, slack]
+
+# Live updates: every `minutes`, on these days (1 is Monday), between these times.
+tick:
+  minutes: 15
+  days: [1, 2, 3, 4, 5]
+  start: "08:00"
+  end: "18:00"
+
+# Fetched data older than this is marked stale.
+staleAfterMinutes: 60
+# The same, for data fed by hand (/calendar-read, /slack-sweep).
+inboxStaleAfterMinutes: 720
+# Things older than this fold into "Expand for stale tasks". 0 switches it off.
+hideOlderThanDays: 45
+
+# The most one Claude call may spend.
+enrich:
+  maxBudgetUsd: 0.5
+
+server:
+  port: 4815
+
+github:
+  transport: api
+  host: ""
+  rotationTeam: ""
+  # Reviews raised by these people can bypass crew review. GitHub usernames.
+  crewMembers: []
+  review:
+    model: opus
+  rank:
+    # A changed path matching `pattern` adds `weight` to a pull request's rank.
+    riskPaths:
+      - { pattern: 'billing|payment|invoice', label: billing, weight: 3 }
+      - { pattern: 'auth|permission|session', label: auth, weight: 3 }
+      - { pattern: 'migration|\.sql$', label: migrations, weight: 3 }
+      - { pattern: 'send|deliver', label: sending, weight: 2 }
+    docsPattern: '\.md$|^docs/|CHANGELOG'
+    quickWinMaxLines: 80
+    largeLines: 800
+  # The channel where reviews are asked for, and the reactions that mean "skip this one".
+  slackSignal:
+    channelId: ""
+    skipReactions: [octagonal_sign, eyes]
+
+slack:
+  transport: api
+  workspaceUrl: ""
+  # Set this to make Slack links open the Slack app.
+  teamId: ""
+  userId: ""
+  windowHours: 72
+  # Posts by these authors are left out.
+  muteAuthors: []
+  groups: []
+  dynamic:
+    postedWithinDays: 3
+    exclude: []
+  alerts:
+    firing: 'triggered|firing|failed|error|down'
+    resolved: 'recovered|resolved|back to normal'
+  summary:
+    model: haiku
+    minMessages: 3
+
+calendar:
+  transport: ics
+  dayStart: "08:00"
+  dayEnd: "18:00"

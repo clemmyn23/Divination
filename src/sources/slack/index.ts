@@ -58,7 +58,7 @@ async function doctor(ctx: Context): Promise<Check[]> {
   checks.push(
     missing.length === 0
       ? { name: "config", ok: true, detail: `${userId} at ${workspaceUrl}` }
-      : { name: "config", ok: false, detail: `${missing.join(" and ")} not set`, fix: "set them under \"slack\" in config/local.json" },
+      : { name: "config", ok: false, detail: `${missing.join(" and ")} not set`, fix: "set them under slack in config/local.yaml" },
   );
 
   const conversations = conversationsFromConfig(ctx.config);
@@ -73,7 +73,7 @@ async function doctor(ctx: Context): Promise<Check[]> {
   checks.push(
     failed.length === 0
       ? { name: "conversations", ok: true, detail: `${conversations.length} conversations can be read` }
-      : { name: "conversations", ok: false, detail: `cannot read: ${failed.join(", ")}`, fix: "check the ids under slack.groups in config/local.json" },
+      : { name: "conversations", ok: false, detail: `cannot read: ${failed.join(", ")}`, fix: "check the ids under slack.groups in config/local.yaml" },
   );
   return checks;
 }

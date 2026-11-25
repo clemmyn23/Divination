@@ -19,7 +19,7 @@ export interface SuperviseDeps {
 }
 
 const WATCHED = /^(src|bin|config|prompts)\//;
-const KINDS = /\.(ts|js|css|json|md)$/;
+const KINDS = /\.(ts|js|css|yaml|md)$/;
 
 /**
  * Whether a changed file means the running server is out of date: code, config, styles
@@ -30,7 +30,7 @@ export function needsRestart(path: string): boolean {
   const name = basename(p);
   if (!WATCHED.test(p) || !KINDS.test(name)) return false;
   if (name.startsWith(".") || name.endsWith("~")) return false;
-  if (/\.test\.[a-z]+$/.test(name) || name === "local.example.json") return false;
+  if (/\.test\.[a-z]+$/.test(name) || name === "local.example.yaml") return false;
   return true;
 }
 

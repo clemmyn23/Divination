@@ -104,10 +104,10 @@ test("changes to tests, output and editor leftovers do not restart anything", ()
 });
 
 test("what counts as a change worth restarting for", () => {
-  for (const path of ["src/core/time.ts", "bin/divination.ts", "config/local.json", "config/defaults.json", "src/render/theme/base.css", "src/render/client/app.js", "prompts/pr-review.md"]) {
+  for (const path of ["src/core/time.ts", "bin/divination.ts", "config/local.yaml", "config/defaults.yaml", "src/render/theme/base.css", "src/render/client/app.js", "prompts/pr-review.md"]) {
     assert.equal(needsRestart(path), true, path);
   }
-  for (const path of ["src/core/time.test.ts", "src/render/client/app.test.ts", "src/core/.time.ts.swp", "src/core/time.ts~", "src/core/4913", "README.md", "config/local.example.json"]) {
+  for (const path of ["src/core/time.test.ts", "src/render/client/app.test.ts", "src/core/.time.ts.swp", "src/core/time.ts~", "src/core/4913", "README.md", "config/local.example.yaml"]) {
     assert.equal(needsRestart(path), false, path);
   }
 });

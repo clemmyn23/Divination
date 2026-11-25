@@ -89,7 +89,7 @@ pieces together.
    when it fails. Stop at the first check the rest depend on.
 
 8. **Register.** Add the source to the list in `src/sources/index.ts`, add its config
-   block to `config/defaults.json` and to `Config` in `src/core/types.ts`, and add its id
+   block to `config/defaults.yaml` and to `Config` in `src/core/types.ts`, and add its id
    to `sources` in config.
 
 9. **Sample page.** Add an entry to `test/fixtures/page/entries.ts` so
@@ -157,7 +157,7 @@ See `src/sources/github/review.enricher.ts` and `src/sources/slack/summary.enric
 
 ## Before you call it done
 
-- `npm test` and `npm run typecheck` pass.
+- `pnpm test` and `pnpm typecheck` pass.
 - `node bin/divination.ts doctor` says something useful for your source when it is not
   set up, and passes when it is.
 - The panel has been checked against the real service, not only the fixtures. Real data

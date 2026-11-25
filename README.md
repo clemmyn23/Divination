@@ -18,11 +18,12 @@ published anywhere.
 
 ## Start
 
-Needs Node 24 or newer (it runs TypeScript directly; there is no build step) and macOS.
+Needs Node 24 or newer (it runs TypeScript directly; there is no build step), pnpm and
+macOS.
 
 ```bash
-npm install
-cp config/local.example.json config/local.json   # then edit it
+pnpm install
+cp config/local.example.yaml config/local.yaml   # then edit it
 node bin/divination.ts doctor                     # says what each source still needs
 node bin/divination.ts serve                      # prints the address of the page
 ```
@@ -46,7 +47,7 @@ All are run as `node bin/divination.ts <command>`.
 | `secret set <name>` | Store a token in the macOS Keychain |
 | `sweep-plan` | Print what a hand-started Slack sweep should read |
 
-`npm test` runs the tests and `npm run typecheck` checks the types.
+`pnpm test` runs the tests and `pnpm typecheck` checks the types.
 
 ## The page
 
@@ -120,9 +121,12 @@ Two ways:
 
 ## Config
 
-- `config/defaults.json` holds every setting with its default. It is committed.
-- `config/local.json` holds yours and is merged over the defaults. It is not committed.
-  `config/local.example.json` shows the shape.
+- `config/defaults.yaml` holds every setting with its default. It is committed.
+- `config/local.yaml` holds yours and is merged over the defaults. It is not committed.
+  `config/local.example.yaml` shows the shape.
+
+They are YAML, so comments are welcome. Settings merge key by key; a list in your file
+replaces the whole default list.
 
 Settings you are most likely to change: `me`, `sources`, `tick`, `github.host`,
 `github.rotationTeam`, `github.crewMembers`, `github.rank.riskPaths`, `slack.groups`,

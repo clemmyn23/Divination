@@ -13,12 +13,15 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 /** Wednesday 25 November 2026, 10:00 in Sydney. */
 export const NOW = Date.parse("2026-11-24T23:00:00Z");
 
-/** A throwaway repo root holding the committed defaults and, optionally, a local config. */
-export function tempRoot(local?: object): string {
+/**
+ * A throwaway repo root holding the committed defaults and, optionally, a local config.
+ * An object is written as JSON, which is also YAML; a string is written as it is.
+ */
+export function tempRoot(local?: object | string): string {
   const root = mkdtempSync(join(tmpdir(), "divination-"));
   mkdirSync(join(root, "config"));
-  cpSync(join(repoRoot, "config", "defaults.json"), join(root, "config", "defaults.json"));
-  if (local) writeFileSync(join(root, "config", "local.json"), JSON.stringify(local));
+  cpSync(join(repoRoot, "config", "defaults.yaml"), join(root, "config", "defaults.yaml"));
+  if (local !== undefined) writeFileSync(join(root, "config", "local.yaml"), typeof local === "string" ? local : JSON.stringify(local));
   return root;
 }
 
