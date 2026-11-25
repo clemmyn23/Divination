@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import type { Context } from "../core/types.ts";
 import { contextWith, fakeExec, tempRoot } from "../../test/helpers.ts";
 import { claudeCheck, runClaude } from "./claude.ts";
 
@@ -200,11 +201,11 @@ test("a logged-out stream fails in the CLI's own words, and the error is not sho
 
 // Connector runs: the reads Refresh now can start
 
-test("a run that may use connectors does not shut out MCP servers, and still gets no built-in tools", async () => {
+test("a run that may use connectors is not started with --strict-mcp-config, which shuts connectors out too, and still gets no built-in tools", async () => {
   const exec = fakeExec({ "claude -p": { stdout: events(RESULT) } });
   const tools = ["mcp__claude_ai_Slack__slack_read_channel", "mcp__claude_ai_Slack__slack_read_thread"];
   await runClaude(contextWith({}, { exec }), { ...req, connectors: true, allowedTools: tools });
-  const args = exec.calls[0]!;
+  const args = exec.calls.find((call) => call[1] === "-p")!;
   assert.ok(!args.includes("--strict-mcp-config"));
   assert.equal(args[args.indexOf("--tools") + 1], "");
   assert.deepEqual(args.slice(-3), ["--allowedTools", ...tools]);
@@ -212,6 +213,122 @@ test("a run that may use connectors does not shut out MCP servers, and still get
   const plain = fakeExec({ "claude -p": { stdout: events(RESULT) } });
   await runClaude(contextWith({}, { exec: plain }), req);
   assert.ok(plain.calls[0]!.includes("--strict-mcp-config"));
+});
+
+// A connector run would otherwise start with every MCP server the account and machine have,
+// hundreds of tool descriptions that each turn pays for again.
+
+const MCP_LIST = [
+  "Checking MCP server health…",
+  "",
+  "claude.ai Ada - Agency Custom Connector: https://example.test/api/mcp/oauth - ! Needs authentication",
+  "claude.ai Slack: https://mcp.slack.com/mcp - ✔ Connected",
+  "claude.ai Google Calendar: https://calendarmcp.googleapis.com/mcp/v1 - ✔ Connected",
+  "code-knowledge-graph: npx -y some-server --flag - ✔ Connected",
+  "playwright: npx @playwright/mcp@latest - ✗ Failed to connect",
+  "",
+].join("\n");
+const SLACK_TOOLS = ["mcp__claude_ai_Slack__slack_read_channel", "mcp__claude_ai_Slack__slack_read_thread"];
+type Settings = { disableAllHooks?: boolean; deniedMcpServers?: { serverName: string }[] };
+const settingsOf = (args: string[]) => JSON.parse(args[args.indexOf("--settings") + 1]!) as Settings;
+const shutOut = (args: string[]) => (settingsOf(args).deniedMcpServers ?? []).map((s) => s.serverName);
+const listing = (...names: string[]) => ["Checking MCP server health…", "", ...names.map((name) => `${name}: https://example.test/mcp - ✔ Connected`), ""].join("\n");
+
+/**
+ * A stand-in for the CLI: `mcp list` answers with whatever `servers` says is left once the
+ * given names are shut out, and a run answers RESULT. Every call and its options are kept.
+ */
+function cli(servers: (shutOut: string[]) => string | undefined) {
+  const calls: { args: string[]; env?: Record<string, string> }[] = [];
+  const exec: Context["exec"] = async (_cmd, args, opts) => {
+    calls.push({ args, env: opts?.env });
+    if (args.includes("-p")) return { code: 0, stdout: events(RESULT), stderr: "" };
+    const stdout = servers(args.includes("--settings") ? shutOut(args) : []);
+    return stdout === undefined ? { code: 1, stdout: "", stderr: "" } : { code: 0, stdout, stderr: "" };
+  };
+  return { exec, calls, runs: () => calls.filter((c) => c.args.includes("-p")), lists: () => calls.filter((c) => !c.args.includes("-p")) };
+}
+
+test("a connector run shuts out every MCP server but the one its tools belong to", async () => {
+  const c = cli((gone) => (gone.length === 0 ? MCP_LIST : listing("claude.ai Slack")));
+  await runClaude(contextWith({}, { exec: c.exec }), { ...req, connectors: true, allowedTools: SLACK_TOOLS });
+
+  assert.deepEqual(c.calls[0]!.args, ["mcp", "list"]);
+  const args = c.runs()[0]!.args;
+  assert.deepEqual(shutOut(args), ["claude.ai Ada - Agency Custom Connector", "claude.ai Google Calendar", "code-knowledge-graph", "playwright"]);
+  assert.ok(!args.includes("--strict-mcp-config"));
+  assert.ok(args.indexOf("--settings") < args.indexOf("--allowedTools")); // --allowedTools takes everything after it
+});
+
+test("servers that only appear once others are shut out are found by listing again, until none is left", async () => {
+  // Shutting out one server can uncover another of the same service that it had been standing in for.
+  const c = cli((gone) => {
+    if (gone.length === 0) return listing("claude.ai Slack", "figma", "playwright");
+    if (!gone.includes("plugin:figma:figma")) return listing("claude.ai Slack", "plugin:figma:figma");
+    if (!gone.includes("claude.ai Figma")) return listing("claude.ai Slack", "claude.ai Figma");
+    return listing("claude.ai Slack");
+  });
+  await runClaude(contextWith({}, { exec: c.exec }), { ...req, connectors: true, allowedTools: SLACK_TOOLS });
+  assert.deepEqual(shutOut(c.runs()[0]!.args), ["figma", "playwright", "plugin:figma:figma", "claude.ai Figma"]);
+  assert.equal(c.lists().length, 4);
+});
+
+test("the servers are listed once and remembered for the next connector run", async () => {
+  const c = cli((gone) => (gone.length === 0 ? MCP_LIST : listing("claude.ai Slack")));
+  const ctx = contextWith({}, { exec: c.exec });
+  await runClaude(ctx, { ...req, connectors: true, allowedTools: SLACK_TOOLS });
+  const listed = c.lists().length;
+  await runClaude(ctx, { ...req, connectors: true, allowedTools: SLACK_TOOLS });
+  assert.equal(c.lists().length, listed);
+  assert.deepEqual(shutOut(c.runs()[1]!.args), shutOut(c.runs()[0]!.args));
+
+  // A run that needs a different server works its own list out.
+  await runClaude(ctx, { ...req, connectors: true, allowedTools: ["mcp__claude_ai_Google_Calendar__list_events"] });
+  assert.ok(c.lists().length > listed);
+  assert.ok(shutOut(c.runs()[2]!.args).includes("claude.ai Slack"));
+});
+
+test("a connector run waits for its connector before the first turn, so its tools are there", async () => {
+  const c = cli(() => listing("claude.ai Slack"));
+  await runClaude(contextWith({}, { exec: c.exec }), { ...req, connectors: true, allowedTools: SLACK_TOOLS, env: { EXTRA: "1" } });
+  assert.deepEqual(c.runs()[0]!.env, { EXTRA: "1", MCP_CONNECTION_NONBLOCKING: "0", MCP_CONNECT_TIMEOUT_MS: "30000" });
+
+  const plain = cli(() => undefined);
+  await runClaude(contextWith({}, { exec: plain.exec }), req);
+  assert.equal(plain.runs()[0]!.env, undefined);
+});
+
+test("a run with no connectors does not list the MCP servers: it loads none anyway", async () => {
+  const c = cli(() => MCP_LIST);
+  await runClaude(contextWith({}, { exec: c.exec }), req);
+  assert.equal(c.lists().length, 0);
+  assert.equal(settingsOf(c.runs()[0]!.args).deniedMcpServers, undefined);
+  assert.ok(c.runs()[0]!.args.includes("--strict-mcp-config"));
+});
+
+test("when the servers cannot be listed, or none matches the run's tools, none is shut out", async () => {
+  const unlisted = cli(() => undefined);
+  assert.deepEqual(await runClaude(contextWith({}, { exec: unlisted.exec }), { ...req, connectors: true, allowedTools: SLACK_TOOLS }), { doubled: 4 });
+  assert.equal(settingsOf(unlisted.runs()[0]!.args).deniedMcpServers, undefined);
+
+  // Shutting out everything would leave the run with no way to do its job.
+  const renamed = cli(() => MCP_LIST);
+  await runClaude(contextWith({}, { exec: renamed.exec }), { ...req, connectors: true, allowedTools: ["mcp__some_other_name__read"] });
+  assert.equal(settingsOf(renamed.runs()[0]!.args).deniedMcpServers, undefined);
+});
+
+test("a listing that fails part-way keeps what was already found", async () => {
+  const c = cli((gone) => (gone.length === 0 ? MCP_LIST : undefined));
+  await runClaude(contextWith({}, { exec: c.exec }), { ...req, connectors: true, allowedTools: SLACK_TOOLS });
+  assert.equal(shutOut(c.runs()[0]!.args).length, 4);
+});
+
+test("no run loads the machine's skills or runs its hooks: a prompt here needs neither", async () => {
+  const exec = fakeExec({ "claude -p": { stdout: events(RESULT) } });
+  await runClaude(contextWith({}, { exec }), req);
+  const args = exec.calls[0]!;
+  assert.ok(args.includes("--disable-slash-commands"));
+  assert.equal((settingsOf(args) as { disableAllHooks?: boolean }).disableAllHooks, true);
 });
 
 test("a note for this run is added after the prompt file's text", async () => {

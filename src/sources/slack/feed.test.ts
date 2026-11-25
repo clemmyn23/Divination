@@ -27,7 +27,7 @@ function sweeping(answer: object, local: object = LOCAL) {
   const inputs: (string | undefined)[] = [];
   const ctx = contextWith(local, {
     exec: Object.assign((cmd: string, args: string[], opts?: Parameters<typeof exec>[2]) => {
-      inputs.push(opts?.input);
+      if (args[0] === "-p") inputs.push(opts?.input); // the run itself, not the listing of servers before it
       return exec(cmd, args, opts);
     }, {}),
   });
@@ -40,7 +40,7 @@ test("a sweep hands Claude the plan and the sweep prompt, with only Slack's read
   assert.deepEqual(dropped, SWEPT);
   assert.equal(fromInbox(dropped, ctx).threads.length, 1); // it is what the inbox reader takes
 
-  const args = exec.calls[0]!;
+  const args = exec.calls.find((call) => call[1] === "-p")!;
   assert.equal(args[args.indexOf("--model") + 1], "haiku");
   assert.ok(!args.includes("--strict-mcp-config"));
   assert.equal(args[args.indexOf("--tools") + 1], "");

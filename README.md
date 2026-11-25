@@ -84,10 +84,17 @@ pressing again within `claudeReads.throttleMinutes` (2 by default) refreshes as 
 does not ask Claude again, and the log says how long is left. The throttle only ever holds
 back those Claude calls.
 
-Each sparkle call runs the `claude` command-line tool headless, with a spending cap
-(`enrich.maxBudgetUsd`), no session kept, and only the tools its prompt needs. Results
-are cached, so the same thing is never asked twice. Drafted reviews are drafts: you read,
-edit and post them yourself.
+Each call runs the `claude` command-line tool headless, with a spending cap
+(`enrich.maxBudgetUsd`, which applies to a Refresh now read too), no session kept, and
+only the tools its prompt needs. A call that reaches the cap is stopped and says so.
+Sparkle results are cached, so the same thing is never asked twice. Drafted reviews are
+drafts: you read, edit and post them yourself.
+
+A call is started lean, because everything a run starts with is read again on every turn:
+no skills, no hooks, and no MCP servers, except that a Refresh now read gets the one
+connector it reads through. To leave the others out it first lists the MCP servers this
+machine and account have (`claude mcp list`, about 20 seconds, remembered for an hour).
+The activity log shows what each run loaded and the tokens it used.
 
 ## What each source needs
 

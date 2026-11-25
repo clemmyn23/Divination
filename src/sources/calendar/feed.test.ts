@@ -12,7 +12,7 @@ function reading(answer: object, local: object = {}) {
   const inputs: (string | undefined)[] = [];
   const ctx = contextWith(local, {
     exec: Object.assign((cmd: string, args: string[], opts?: Parameters<typeof exec>[2]) => {
-      inputs.push(opts?.input);
+      if (args[0] === "-p") inputs.push(opts?.input); // the run itself, not the listing of servers before it
       return exec(cmd, args, opts);
     }, {}),
   });
@@ -25,7 +25,7 @@ test("a calendar read asks Claude, on the configured model, with only the calend
   assert.deepEqual(dropped, { date: "2026-11-25", events: [EVENT] });
   assert.equal(fromInbox(dropped, ctx).events.length, 1); // it is what the inbox reader takes
 
-  const args = exec.calls[0]!;
+  const args = exec.calls.find((call) => call[1] === "-p")!;
   assert.equal(args[args.indexOf("--model") + 1], "sonnet");
   assert.ok(!args.includes("--strict-mcp-config"));
   assert.equal(args[args.indexOf("--tools") + 1], "");

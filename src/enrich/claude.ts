@@ -144,6 +144,56 @@ function parseJson(text: string): unknown {
   }
 }
 
+const HOUR = 3_600_000;
+/** Enough listings to uncover a server hidden behind a server hidden behind a server. */
+const MAX_LISTINGS = 6;
+/** Which servers to shut out, by folder and the tools wanted: listing them takes several seconds. */
+const shutOutCache = new Map<string, { at: number; names: string[] }>();
+
+/** The servers `claude mcp list` shows once the given ones are shut out, or nothing when it fails. */
+async function listServers(ctx: Context, shutOut: string[]): Promise<string[] | undefined> {
+  const settings = shutOut.length > 0 ? ["--settings", JSON.stringify({ deniedMcpServers: shutOut.map((serverName) => ({ serverName })) })] : [];
+  const res = await ctx.exec("claude", [...settings, "mcp", "list"], { timeoutMs: 60_000 });
+  if (res.code !== 0) return undefined;
+  // Each server is one line: "<name>: <address or command> - <state>".
+  return res.stdout
+    .split("\n")
+    .filter((line) => line.includes(": ") && line.includes(" - "))
+    .map((line) => line.slice(0, line.indexOf(": ")));
+}
+
+/**
+ * Every MCP server on this machine and account except the ones `tools` belong to. A run
+ * that may reach connectors would otherwise start with all of them: hundreds of tool
+ * descriptions, read again on every turn, to use two.
+ *
+ * Shutting a server out can uncover another that it stood in for (a plugin's server, then
+ * the account's connector to the same service), so the list is taken again until nothing
+ * new shows. When the servers cannot be listed, or none of them carries the tools wanted,
+ * none is shut out: the run still works, and its log line says how much it loaded.
+ */
+async function serversToShutOut(ctx: Context, tools: string[]): Promise<string[]> {
+  // A tool is named mcp__<server>__<tool>, with the server's name spelt in letters, digits, _ and -.
+  const wanted = (server: string) => tools.some((tool) => tool.startsWith(`mcp__${server.replace(/[^a-zA-Z0-9_-]/g, "_")}__`));
+  const key = `${ctx.root}\n${[...tools].sort().join(" ")}`;
+  const known = shutOutCache.get(key);
+  if (known && ctx.now() - known.at < HOUR) return known.names;
+
+  const names: string[] = [];
+  for (let listing = 0; listing < MAX_LISTINGS; listing++) {
+    const listed = await listServers(ctx, names);
+    if (listed === undefined) break;
+    if (listing === 0 && !listed.some(wanted)) return [];
+    const more = listed.filter((server) => !wanted(server) && !names.includes(server));
+    if (more.length === 0) {
+      shutOutCache.set(key, { at: ctx.now(), names });
+      break;
+    }
+    names.push(...more);
+  }
+  return names;
+}
+
 /**
  * Why a run failed, in the most useful words there are: the CLI's own, else that it ran
  * into the spending limit, else its reason code, else what it wrote as an error.
@@ -192,19 +242,28 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     "--no-session-persistence",
     "--max-budget-usd",
     String(ctx.config.enrich.maxBudgetUsd),
+    // No prompt here uses a skill, and the list of them is read on every turn.
+    "--disable-slash-commands",
   ];
   // Only the built-in tools the prompt names exist for the run ("" means none at all), so
   // text in a PR or a thread cannot talk it into reading local files.
   const builtIn = [...new Set((req.allowedTools ?? []).map((tool) => tool.split("(")[0]!).filter((name) => !name.startsWith("mcp__")))];
   args.push("--tools", builtIn.join(","));
-  // Last on purpose: this flag takes every argument that follows it.
-  if (req.allowedTools && req.allowedTools.length > 0) args.push("--allowedTools", ...req.allowedTools);
 
   // Logged for the page's activity view: what was asked of which model, how long it took,
   // what it cost and what came back. The input is never logged.
   const started = performance.now();
   const elapsed = () => Math.round(performance.now() - started);
   ctx.log("llm-start", { model: req.model, prompt: basename(req.promptFile), tools: req.allowedTools ?? [] });
+
+  // The machine's hooks add their own text to a run, and none of it is for these prompts.
+  const shutOut = req.connectors ? await serversToShutOut(ctx, req.allowedTools ?? []) : [];
+  args.push("--settings", JSON.stringify({ disableAllHooks: true, ...(shutOut.length > 0 ? { deniedMcpServers: shutOut.map((serverName) => ({ serverName })) } : {}) }));
+  // Last on purpose: this flag takes every argument that follows it.
+  if (req.allowedTools && req.allowedTools.length > 0) args.push("--allowedTools", ...req.allowedTools);
+  // A lean run starts before its connector has connected, and would begin with no tools at
+  // all. These make it wait, for up to half a minute.
+  const env = req.connectors ? { ...req.env, MCP_CONNECTION_NONBLOCKING: "0", MCP_CONNECT_TIMEOUT_MS: "30000" } : req.env;
 
   let out: CliOutput | undefined;
   const usage = () => ({
@@ -228,7 +287,7 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
   try {
     const res = await ctx.exec("claude", args, {
       input: req.input,
-      env: req.env,
+      env,
       timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
       onStdout: watchStream(ctx.log),
     });
