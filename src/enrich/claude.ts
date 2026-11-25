@@ -65,6 +65,10 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     "--max-budget-usd",
     String(ctx.config.enrich.maxBudgetUsd),
   ];
+  // Only the built-in tools the prompt names exist for the run ("" means none at all), so
+  // text in a PR or a thread cannot talk it into reading local files.
+  const builtIn = [...new Set((req.allowedTools ?? []).map((tool) => tool.split("(")[0]!).filter((name) => !name.startsWith("mcp__")))];
+  args.push("--tools", builtIn.join(","));
   // Last on purpose: this flag takes every argument that follows it.
   if (req.allowedTools && req.allowedTools.length > 0) args.push("--allowedTools", ...req.allowedTools);
 

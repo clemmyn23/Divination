@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { utimesSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { test } from "node:test";
 import { NOW, contextWith, fakeSource } from "../../test/helpers.ts";
 import { ConfigError } from "./config.ts";
@@ -146,4 +147,16 @@ test("collecting a source is logged when it starts and when it ends, with how lo
   ]);
   assert.equal(typeof logged[1]![1].ms, "number");
   assert.equal(logged[1]![1].at, NOW);
+});
+
+test("an inbox file that is not valid JSON is reported as such and left where it is", async () => {
+  const ctx = contextWith({ fake: { transport: "inbox" } });
+  const path = ctx.paths.inbox("fake");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, '{"n": 2,}'); // a trailing comma, as a careless writer leaves
+  const envelope = await collectSource(fakeSource(), ctx);
+  assert.equal(envelope.ok, false);
+  assert.match(envelope.error!, /^inbox file is not valid JSON: /);
+  assert.equal(readFileSync(path, "utf8"), '{"n": 2,}');
+  assert.equal(existsSync(`${path}.bad`), false);
 });

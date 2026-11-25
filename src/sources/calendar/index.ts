@@ -1,5 +1,5 @@
 import { HttpError } from "../../core/http.ts";
-import { readJson } from "../../core/store.ts";
+import { readDropped } from "../../core/store.ts";
 import { isoDate, startOfDay } from "../../core/time.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
 import { dayClass, eventsForDay, headline } from "./day.ts";
@@ -60,9 +60,9 @@ function validate(data: unknown): string[] {
 /** For the inbox transport: is there a dropped file, and can it be read? */
 function inboxCheck(ctx: Context): Check {
   const fix = "run /calendar-read in Claude, in this folder";
-  const dropped = readJson<unknown>(ctx.paths.inbox("calendar"), null);
-  if (dropped === null) return { name: "inbox file", ok: false, detail: "nothing has been read into out/inbox/calendar.json yet", fix };
   try {
+    const dropped = readDropped(ctx.paths.inbox("calendar"), "out/inbox/calendar.json");
+    if (dropped === undefined) return { name: "inbox file", ok: false, detail: "nothing has been read into out/inbox/calendar.json yet", fix };
     const data = fromInbox(dropped, ctx);
     const n = data.events.length;
     return { name: "inbox file", ok: true, detail: `${n} ${n === 1 ? "event" : "events"} for ${data.date}` };

@@ -90,3 +90,17 @@ test("a failed Claude call is logged with its error, and a very long answer is c
   assert.equal(output.length, 4000);
   assert.ok(output.endsWith("…"));
 });
+
+test("a Claude run is given only the built-in tools its prompt names, and none when it names none", async () => {
+  const stdout = JSON.stringify({ is_error: false, structured_output: { ok: true } });
+  const none = fakeExec({ "claude -p": { stdout } });
+  await runClaude(contextWith({}, { exec: none }), req);
+  const bare = none.calls[0]!;
+  assert.equal(bare[bare.indexOf("--tools") + 1], "");
+
+  const some = fakeExec({ "claude -p": { stdout } });
+  await runClaude(contextWith({}, { exec: some }), { ...req, allowedTools: ["Bash(gh pr diff:*)", "Bash(gh pr view:*)", "Read"] });
+  const args = some.calls[0]!;
+  assert.equal(args[args.indexOf("--tools") + 1], "Bash,Read");
+  assert.ok(args.indexOf("--tools") < args.indexOf("--allowedTools")); // --allowedTools takes everything after it
+});

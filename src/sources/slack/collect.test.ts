@@ -226,3 +226,16 @@ test("threads written only by muted authors are left out on the API path too", a
   // "Staging is back." was written by Ana Lopez alone; the build thread has Sam in it too.
   assert.deepEqual(data.threads.filter((t) => t.channelId === "C1").map((t) => t.messageCount), [3]);
 });
+
+test("a lone app post is dropped whether or not it carries a user id as well as a bot id", async () => {
+  const routes = slackRoutes();
+  routes[`${API}conversations.history?channel=C1`] = {
+    ok: true,
+    messages: [
+      { ts: "1795562700.000700", user: "UBOT", bot_id: "B9", text: "requested a review" },
+      { ts: "1795562600.000600", user: "U1", text: "a person" },
+    ],
+  };
+  const data = await collectSlack(contextWith(SLACK_LOCAL, { http: fakeHttp(routes), secrets: token }));
+  assert.deepEqual(data.threads.filter((t) => t.channelId === "C1").map((t) => t.excerpt), ["a person"]);
+});

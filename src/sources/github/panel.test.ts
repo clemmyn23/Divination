@@ -208,3 +208,23 @@ test("a PR's needs-you item carries the same key, so ticking either clears both"
   const data: GithubData = { login: "me", prs: [pr(1, "review_now")] };
   assert.equal(github.attention(data, view)[0]!.doneKey, "pr:o/r#1@aaa111");
 });
+
+test("numbers and CI words that came from a hand-dropped file cannot carry markup into the page", () => {
+  const hostile = { ...pr(1, "review_now"), additions: "<img src=x onerror=alert(1)>", deletions: '"><script>x</script>', ci: 'pass"><b>x</b>' } as unknown as PullRequest;
+  const html = githubPanels({ login: "me", prs: [hostile] }, view)[0]!.html;
+  assert.ok(!html.includes("<img") && !html.includes("<script>") && !html.includes("<b>x</b>"));
+  assert.ok(html.includes("+0 −0"));
+  assert.ok(html.includes('<span class="ci-none">no CI</span>'));
+});
+
+test("validate checks every field the panel prints, so a half-shaped file is refused before it is drawn", () => {
+  const good: GithubData = { login: "me", prs: [pr(1, "review_now")] };
+  assert.deepEqual(github.validate(good), []);
+  const broken = (over: object) => github.validate({ login: "me", prs: [{ ...pr(1, "review_now"), ...over }] });
+  assert.match(broken({ rank: { bucket: "review_now", score: 1 } }).join(), /rank\.reasons/);
+  assert.match(broken({ additions: "many" }).join(), /additions/);
+  assert.match(broken({ ci: "exploded" }).join(), /ci/);
+  assert.match(broken({ title: 7 }).join(), /title/);
+  assert.match(broken({ createdAt: "yesterday" }).join(), /createdAt/);
+  assert.match(broken({ rank: { bucket: "nonsense", score: 1, reasons: [] } }).join(), /rank\.bucket/);
+});

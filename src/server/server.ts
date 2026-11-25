@@ -1,11 +1,12 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tick } from "../cli/commands/tick.ts";
 import { DONE_KEY_MAX, setDone } from "../core/done.ts";
 import { readEnvelope, transportOf } from "../core/pipeline.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
-import { renderSite } from "../render/site.ts";
+import { pageHtml, renderSite } from "../render/site.ts";
 import { createActivity } from "./activity.ts";
 import { createJobs } from "./jobs.ts";
 import { type Timers, createLive } from "./live.ts";
@@ -14,9 +15,16 @@ const MAX_BODY = 10_000;
 const MAX_FIELD = 300;
 const TOKEN_PLACEHOLDER = "__DIVINATION_TOKEN__";
 
-// The page is self-contained, so it may run its own inline code and talk to this server, and nothing else.
-const PAGE_POLICY =
-  "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'";
+/**
+ * The page is self-contained: it may run the one script it carries (named by its hash, so
+ * nothing injected into the page could run), use its own inline styles and talk to this
+ * server, and nothing else. It may not be shown inside a frame on another page.
+ */
+function pagePolicy(html: string): string {
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1] ?? "";
+  const hash = createHash("sha256").update(script).digest("base64");
+  return `default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${hash}'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+}
 
 export interface AppRequest {
   method: string;
@@ -127,15 +135,20 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
     switch (req.path) {
       case "/": {
         if (!existsSync(ctx.paths.site)) renderSite(ctx, sources);
+        // Drawn afresh for each visit, so its date and what it calls stale are true now,
+        // not when a refresh last ran. The page file is left alone: rewriting it here
+        // would make every other open tab reload.
+        const html = pageHtml(ctx, sources);
         return {
           status: 200,
           headers: {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
-            "content-security-policy": PAGE_POLICY,
+            "content-security-policy": pagePolicy(html),
             "x-content-type-options": "nosniff",
+            "x-frame-options": "DENY",
           },
-          body: readFileSync(ctx.paths.site, "utf8").replaceAll(TOKEN_PLACEHOLDER, token),
+          body: html.replaceAll(TOKEN_PLACEHOLDER, token),
         };
       }
 

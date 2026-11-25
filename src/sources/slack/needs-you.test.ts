@@ -32,3 +32,9 @@ test("an app naming me is not someone asking for me", () => {
   assert.equal(needsYou([app], "ME", "channel"), undefined);
   assert.equal(needsYou([app, m("2", "U1", "<@ME> can you rebase?")], "ME", "channel"), "mentioned you");
 });
+
+test("a post by an app that also carries a user id is still an app's post", () => {
+  const app = { ts: "1", user: "UBOT", bot_id: "B1", text: "<@ME> requested a review" };
+  assert.equal(needsYou([app], "ME", "channel"), undefined);
+  assert.equal(needsYou([app, m("2", "U1", "<@ME> thoughts?")], "ME", "channel"), "mentioned you");
+});

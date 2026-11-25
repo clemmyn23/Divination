@@ -22,7 +22,7 @@ export function needsYou(messages: SlackMessage[], me: string, kind: SlackConver
 
   const mention = new RegExp(`<@${me}[|>]`);
   // Only a person's mention counts. Apps name people in every notice they post.
-  if (since.some((m) => m.user !== undefined && mention.test(m.text))) return "mentioned you";
+  if (since.some((m) => m.bot_id === undefined && mention.test(m.text))) return "mentioned you";
 
   const open = last.user !== me && !reactedBy(last, me);
   if (kind === "dm" && open) return "waiting on your reply";

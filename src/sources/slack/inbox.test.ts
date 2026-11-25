@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { test } from "node:test";
 import { NOW, contextWith, view } from "../../../test/helpers.ts";
 import { SLACK_LOCAL } from "../../../test/fixtures/slack/api.ts";
@@ -194,4 +196,15 @@ test("threads written only by muted authors (calendar reminders, review bots) ar
     data.threads.map((t) => t.excerpt),
     ["review requested", "hello"],
   );
+});
+
+test("doctor names a swept file that is not valid JSON, and leaves it for me to fix", async () => {
+  const c = ctx();
+  const path = c.paths.inbox("slack");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, '{"conversations": [,]}');
+  const [check] = await slack.doctor(c);
+  assert.equal(check!.ok, false);
+  assert.match(check!.detail, /not valid JSON/);
+  assert.equal(readFileSync(path, "utf8"), '{"conversations": [,]}');
 });

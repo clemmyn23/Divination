@@ -5,16 +5,28 @@ import { CREW, NEEDS_YOU, githubPanels, prDoneKey } from "./panel.ts";
 import { prReview } from "./review.enricher.ts";
 import type { GithubData } from "./types.ts";
 
+const BUCKETS = ["review_now", "quick_win", "flagged", "blocked", "skip", "excluded"];
+const CI = ["pass", "fail", "pending", "none"];
+
+/** Every field the panel prints or sorts by is checked, so data in the wrong shape is refused before it is drawn. */
 function validate(data: unknown): string[] {
   if (typeof data !== "object" || data === null) return ["github data must be an object"];
   const d = data as { login?: unknown; prs?: unknown };
   const problems: string[] = [];
   if (typeof d.login !== "string") problems.push("login must be a string");
   if (!Array.isArray(d.prs)) return [...problems, "prs must be a list"];
-  d.prs.forEach((pr: { key?: unknown; headSha?: unknown; rank?: { bucket?: unknown } }, i) => {
-    if (typeof pr?.key !== "string") problems.push(`prs[${i}] needs key`);
-    if (typeof pr?.headSha !== "string") problems.push(`prs[${i}] needs headSha`);
-    if (typeof pr?.rank?.bucket !== "string") problems.push(`prs[${i}] needs rank.bucket`);
+  d.prs.forEach((raw: unknown, i) => {
+    const pr = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+    const rank = (typeof pr.rank === "object" && pr.rank !== null ? pr.rank : {}) as Record<string, unknown>;
+    for (const field of ["key", "headSha", "title", "url", "author", "request"]) {
+      if (typeof pr[field] !== "string") problems.push(`prs[${i}] needs ${field}`);
+    }
+    for (const field of ["additions", "deletions", "createdAt"]) {
+      if (typeof pr[field] !== "number" || !Number.isFinite(pr[field])) problems.push(`prs[${i}].${field} must be a number`);
+    }
+    if (!CI.includes(pr.ci as string)) problems.push(`prs[${i}].ci must be one of ${CI.join(", ")}`);
+    if (!BUCKETS.includes(rank.bucket as string)) problems.push(`prs[${i}] needs rank.bucket`);
+    if (!Array.isArray(rank.reasons) || !rank.reasons.every((r) => typeof r === "string")) problems.push(`prs[${i}] needs rank.reasons`);
   });
   return problems;
 }

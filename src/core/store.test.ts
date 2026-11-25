@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, test } from "node:test";
-import { readJson, writeJson } from "./store.ts";
+import { readDropped, readJson, writeJson } from "./store.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -26,4 +26,18 @@ test("corrupt file falls back and is kept", () => {
   writeFileSync(p, "{not json");
   assert.deepEqual(readJson(p, {}), {});
   assert.equal(readFileSync(p + ".bad", "utf8"), "{not json");
+});
+
+test("a file dropped by someone else is read without ever being moved, and a bad one says what is wrong", () => {
+  const dir = mkdtempSync(join(tmpdir(), "divination-dropped-"));
+  const path = join(dir, "inbox.json");
+  assert.equal(readDropped(path), undefined); // nothing there
+
+  writeFileSync(path, '{"n": 2}');
+  assert.deepEqual(readDropped(path), { n: 2 });
+
+  writeFileSync(path, '{"n": 2,}');
+  assert.throws(() => readDropped(path), /is not valid JSON: /);
+  assert.equal(readFileSync(path, "utf8"), '{"n": 2,}'); // still there, to be looked at and fixed
+  assert.equal(existsSync(`${path}.bad`), false);
 });

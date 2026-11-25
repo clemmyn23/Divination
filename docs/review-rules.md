@@ -35,5 +35,9 @@ A pull request's post in the review channel can take it off my plate or flag it:
 - 👀 from someone other than me: already picked up, so it is skipped;
 - replies under the post: there is a discussion, so it is flagged.
 
+These signals need the review channel's posts with who reacted. They work when Slack is
+read through the Web API. When Slack is fed by hand with `/slack-sweep`, the sweep does
+not collect them yet, so no pull request is skipped or flagged this way.
+
 - Channel and reactions: `github.slackSignal` in config.
 - Code: `src/sources/github/slack-signal.ts`.

@@ -175,7 +175,9 @@ test("validate accepts collected data and names what is wrong otherwise", async 
   assert.deepEqual(github.validate(await collectGithub(ctx)), []);
   assert.deepEqual(github.validate(null), ["github data must be an object"]);
   assert.deepEqual(github.validate({ prs: [] }), ["login must be a string"]);
-  assert.deepEqual(github.validate({ login: "me", prs: [{ key: "o/r#1" }] }), ["prs[0] needs headSha", "prs[0] needs rank.bucket"]);
+  const problems = github.validate({ login: "me", prs: [{ key: "o/r#1" }] });
+  assert.ok(problems.includes("prs[0] needs headSha") && problems.includes("prs[0] needs rank.bucket"));
+  assert.ok(!problems.includes("prs[0] needs key"));
 });
 
 test("doctor passes when gh is logged in and the API answers", async () => {

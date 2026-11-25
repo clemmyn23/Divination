@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { test } from "node:test";
 import { contextWith, view } from "../../../test/helpers.ts";
 import { collectSource } from "../../core/pipeline.ts";
@@ -225,4 +227,15 @@ test("a timed entry that runs for a day or more (a week-long roster) is treated 
   const [panel] = calendar.panels(data, { ...view, config: ctx().config });
   assert.ok(panel!.html.includes('<p class="all-day">All day: Chris on roster</p>'));
   assert.equal(panel!.html.match(/<li/g)!.length, 1);
+});
+
+test("doctor names a dropped calendar file that is not valid JSON, and leaves it", async () => {
+  const c = ctx();
+  const path = c.paths.inbox("calendar");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "{ oops");
+  const [check] = await calendar.doctor(c);
+  assert.equal(check!.ok, false);
+  assert.match(check!.detail, /not valid JSON/);
+  assert.equal(readFileSync(path, "utf8"), "{ oops");
 });

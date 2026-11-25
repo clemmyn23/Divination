@@ -21,10 +21,15 @@ function lockIsHeld(ctx: Context): boolean {
 
 /**
  * One update: collect every source with plain API calls, then rebuild the page.
- * It never calls an LLM. Outside working hours it does nothing unless forced.
+ * It never calls an LLM. Outside working hours it collects nothing unless forced.
  */
 export async function tick(ctx: Context, sources: Source<any>[], opts: { force?: boolean } = {}): Promise<TickResult> {
-  if (!opts.force && !withinActiveHours(ctx.now(), ctx.config.tick, ctx.config.me.timezone)) return "outside-hours";
+  if (!opts.force && !withinActiveHours(ctx.now(), ctx.config.tick, ctx.config.me.timezone)) {
+    // Nothing is collected outside working hours, but the page is still redrawn: its date,
+    // its "updated" times and what counts as stale must stay true while it sits open.
+    renderSite(ctx, sources);
+    return "outside-hours";
+  }
   if (lockIsHeld(ctx)) {
     ctx.log("tick", { result: "locked", ms: 0 });
     return "locked";

@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { beforeEach, test } from "node:test";
 import { contextWith, fakeExec, fakeTimers, settle, sourceWith } from "../../test/helpers.ts";
 import type { Context, EnrichItem, Enricher } from "../core/types.ts";
@@ -203,4 +205,33 @@ test("asking for enrichment is in the activity log, and the log needs the right 
   assert.ok(log.body.lines.some((l: { text: string }) => l.text === "Asked for fake-enricher on a (1 item)"));
   assert.equal((await app.handle(req("GET", "/api/activity", { headers: { host: "evil.example" } }))).status, 403);
   assert.equal((await app.handle(req("POST", "/api/activity"))).status, 405);
+});
+
+// Review fix 1: what the page says about freshness must be true when it is opened
+
+test("the page is drawn afresh for each visit, without touching the page file", async () => {
+  mkdirSync(dirname(ctx.paths.site), { recursive: true });
+  writeFileSync(ctx.paths.site, "<html>A PAGE DRAWN DAYS AGO</html>");
+  const res = await app.handle(req("GET", "/"));
+  assert.equal(res.status, 200);
+  assert.ok(!res.body.includes("A PAGE DRAWN DAYS AGO"));
+  assert.ok(res.body.includes('id="needs-you"'));
+  assert.ok(res.body.includes('content="tok"'));
+  // Rewriting the file here would make every other open tab reload, which would redraw it again.
+  assert.equal(readFileSync(ctx.paths.site, "utf8"), "<html>A PAGE DRAWN DAYS AGO</html>");
+});
+
+// Review fix 3: the page cannot be put in a frame, and only its own script may run
+
+test("the page refuses to be framed and allows only the one script it carries", async () => {
+  const res = await app.handle(req("GET", "/"));
+  const policy = res.headers["content-security-policy"]!;
+  assert.match(policy, /frame-ancestors 'none'/);
+  assert.equal(res.headers["x-frame-options"], "DENY");
+
+  assert.ok(!/script-src[^;]*'unsafe-inline'/.test(policy));
+  const scripts = [...res.body.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]!);
+  assert.equal(scripts.length, 1);
+  const hash = createHash("sha256").update(scripts[0]!).digest("base64");
+  assert.ok(policy.includes(`script-src 'sha256-${hash}'`), policy);
 });

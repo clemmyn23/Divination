@@ -294,3 +294,29 @@ test("the status is a button with a hover breakdown beside it and a log dialog b
   assert.match(html, /<dialog id="activity-log" aria-labelledby="activity-title">[\s\S]*<h2 id="activity-title">Activity<\/h2>[\s\S]*<pre id="activity-lines"><\/pre>[\s\S]*<button id="activity-close" type="button">Close<\/button>[\s\S]*<\/dialog>/);
   assert.ok(html.indexOf('id="activity-pop"') < html.indexOf("</header>")); // the breakdown sits with the controls
 });
+
+test("a source whose panel or needs-you list cannot be drawn shows an error panel; the rest of the page is unharmed", () => {
+  const broken = fakeSource({
+    id: "broken",
+    title: "Broken",
+    panels: () => {
+      throw new Error("pr.rank.reasons is not <iterable>");
+    },
+  });
+  const nagging = fakeSource({
+    id: "nagging",
+    title: "Nagging",
+    attention: () => {
+      throw new Error("no such field");
+    },
+    panels: () => [{ ...panel(), id: "nag", title: "Still drawn" }],
+  });
+  const fine = fakeSource({ id: "fine", attention: () => [item("1")], panels: () => [{ ...panel(), id: "ok", title: "Fine panel" }] });
+  const html = renderPage({ view, entries: [broken, nagging, fine].map((source) => ({ source, envelope: ok({}) })) });
+
+  assert.ok(html.includes('<section id="broken"'));
+  assert.ok(html.includes('<p class="source-error">could not draw this panel: pr.rank.reasons is not &lt;iterable&gt;</p>'));
+  assert.ok(html.includes("Still drawn"));
+  assert.ok(html.includes("Fine panel"));
+  assert.ok(html.includes('id="needs-you" data-count="1"'));
+});

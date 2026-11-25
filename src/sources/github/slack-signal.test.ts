@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { test } from "node:test";
 import { BASE, HOST, githubRoutes } from "../../../test/fixtures/github/api.ts";
 import { contextWith, fakeExec, fakeHttp } from "../../../test/helpers.ts";
@@ -94,4 +96,15 @@ test("when Slack is fed by hand, signals come from the swept file's review posts
   assert.deepEqual(data.prs.find((p) => p.key === "o/r#1")!.signal, { kind: "skip", reason: "already picked up by Sam", url: "https://w.slack.com/archives/CREVIEW/p1795560000000100" });
   assert.equal(data.prs.find((p) => p.key === "o/r#2")!.signal?.reason, "3 replies in the review thread");
   assert.ok(BASE.length > 0);
+});
+
+test("a swept file that is not valid JSON gives no signals, does not fail the queue, and is left alone", async () => {
+  const ctx = contextWith({ ...SIGNAL_LOCAL, slack: { ...SIGNAL_LOCAL.slack, transport: "inbox" } }, { http: fakeHttp(githubRoutes()), exec: gh(), secrets: { get: async () => undefined } });
+  const path = ctx.paths.inbox("slack");
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, "{ oops");
+  const data = await collectGithub(ctx);
+  assert.equal(data.prs.length, 2);
+  assert.ok(data.prs.every((p) => p.signal === undefined));
+  assert.equal(readFileSync(path, "utf8"), "{ oops");
 });

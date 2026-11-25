@@ -67,13 +67,16 @@ ${findings}
 }
 
 function meta(pr: PullRequest): string {
-  const size = `+${pr.additions.toLocaleString("en-US")} −${pr.deletions.toLocaleString("en-US")}`;
+  // Counts and the CI word are checked, not trusted: the data may have come from a dropped file.
+  const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n : 0).toLocaleString("en-US");
+  const ci: Ci = Object.hasOwn(CI_TEXT, pr.ci) ? pr.ci : "none";
+  const size = `+${count(pr.additions)} −${count(pr.deletions)}`;
   const why = pr.rank.reasons.filter((r) => !SHOWN_ELSEWHERE.includes(r)).join(", ");
   const parts = [
     esc(pr.key),
     esc(pr.author),
     size,
-    `<span class="ci-${pr.ci}">${CI_TEXT[pr.ci]}</span>`,
+    `<span class="ci-${ci}">${CI_TEXT[ci]}</span>`,
     `<span class="tag">${esc(pr.request)}</span>`,
     ...(pr.byCrew ? [`<span class="tag crew">${CREW}</span>`] : []),
     ...(why ? [esc(why)] : []),

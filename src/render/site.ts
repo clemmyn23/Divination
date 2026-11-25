@@ -12,12 +12,16 @@ export function writePage(path: string, html: string): void {
   renameSync(tmp, path);
 }
 
-/** Render the page from the saved envelopes and write it to `out/site/index.html`. Returns its path. */
-export function renderSite(ctx: Context, sources: Source<any>[]): string {
-  const html = renderPage({
+/** The page as it stands right now, drawn from the saved envelopes. Writes nothing. */
+export function pageHtml(ctx: Context, sources: Source<any>[]): string {
+  return renderPage({
     view: buildView(ctx, sources),
     entries: sources.map((source) => ({ source, envelope: readEnvelope(source, ctx) })),
   });
-  writePage(ctx.paths.site, html);
+}
+
+/** Render the page from the saved envelopes and write it to `out/site/index.html`. Returns its path. */
+export function renderSite(ctx: Context, sources: Source<any>[]): string {
+  writePage(ctx.paths.site, pageHtml(ctx, sources));
   return ctx.paths.site;
 }

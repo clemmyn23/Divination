@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { cacheGet } from "../enrich/cache.ts";
 import { ConfigError } from "./config.ts";
 import { readDone } from "./done.ts";
-import { readJson, writeJson } from "./store.ts";
+import { readDropped, readJson, writeJson } from "./store.ts";
 import type { Config, Context, Envelope, Source, View } from "./types.ts";
 
 /** The sources named in `config.sources`, in that order. */
@@ -39,8 +39,8 @@ export function transportOf(config: Config, id: string): string | undefined {
 async function gather(source: Source<any>, ctx: Context): Promise<{ data: unknown; at: number }> {
   if (transportOf(ctx.config, source.id) !== "inbox") return { data: await source.collect(ctx), at: ctx.now() };
   const path = ctx.paths.inbox(source.id);
-  const dropped = readJson<unknown>(path, null);
-  if (dropped === null) throw new Error("inbox file missing");
+  const dropped = readDropped(path, "inbox file");
+  if (dropped === undefined || dropped === null) throw new Error("inbox file missing");
   return { data: source.fromInbox ? source.fromInbox(dropped, ctx) : dropped, at: Math.round(statSync(path).mtimeMs) };
 }
 

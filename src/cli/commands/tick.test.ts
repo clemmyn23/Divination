@@ -28,11 +28,10 @@ function placeLock(c: Context, ageMs: number) {
   utimesSync(c.paths.lock, at, at);
 }
 
-test("outside working hours nothing runs", async () => {
+test("outside working hours nothing is collected", async () => {
   const saturday = contextWith({}, { now: () => Date.parse("2026-11-27T22:00:00Z") }); // Saturday 09:00 in Sydney
   assert.equal(await tick(saturday, [counting]), "outside-hours");
   assert.equal(collects, 0);
-  assert.equal(existsSync(saturday.paths.site), false);
 });
 
 test("force runs anyway", async () => {
@@ -95,14 +94,22 @@ test("stale lock is ignored", async () => {
 });
 
 test("the lock is cleared when rendering throws", async () => {
+  // A file where the page's folder should be: the page cannot be written.
+  mkdirSync(dirname(dirname(ctx.paths.site)), { recursive: true });
+  writeFileSync(dirname(ctx.paths.site), "not a folder");
+  await assert.rejects(tick(ctx, [fakeSource({ collect: async () => ({}) })]));
+  assert.ok(!existsSync(ctx.paths.lock));
+});
+
+test("a source whose panel throws no longer fails the tick: the page shows the error instead", async () => {
   const broken = fakeSource({
     collect: async () => ({}),
     panels: () => {
       throw new Error("bad panel");
     },
   });
-  await assert.rejects(tick(ctx, [broken]), /bad panel/);
-  assert.ok(!existsSync(ctx.paths.lock));
+  assert.equal(await tick(ctx, [broken]), "ran");
+  assert.ok(readFileSync(ctx.paths.site, "utf8").includes("could not draw this panel: bad panel"));
 });
 
 test("the tick command says what happened", async () => {
@@ -127,4 +134,19 @@ test("a refresh is logged when it starts and when it ends, saying how it was sta
   assert.deepEqual(logged[0]![1], { forced: true });
   assert.equal(logged.at(-1)![1].result, "ran");
   assert.equal(typeof logged.at(-1)![1].ms, "number");
+});
+
+test("outside working hours nothing is collected, but the page is redrawn so its dates and staleness stay true", async () => {
+  const saturday = contextWith({ sources: ["fake"] }, { now: () => Date.parse("2026-11-27T23:00:00Z") }); // Saturday 10:00 in Sydney
+  let collected = 0;
+  const source = fakeSource({
+    collect: async () => {
+      collected++;
+      return {};
+    },
+  });
+  assert.equal(existsSync(saturday.paths.site), false);
+  assert.equal(await tick(saturday, [source]), "outside-hours");
+  assert.equal(collected, 0);
+  assert.ok(readFileSync(saturday.paths.site, "utf8").includes("Saturday 28 November"));
 });

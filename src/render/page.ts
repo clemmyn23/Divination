@@ -39,10 +39,13 @@ function updatedText(envelope: Envelope<unknown>, view: View): string {
   return `updated ${hhmm(envelope.collectedAt, view.config.me.timezone)}`;
 }
 
-function section(panel: Panel, entry: PageEntry, view: View): string {
+const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+function section(panel: Panel, entry: PageEntry, view: View, drawError?: string): string {
   const { source, envelope } = entry;
   const stale = isStale(source.id, envelope, view);
-  const error = envelope.ok ? "" : `\n<p class="source-error">${esc(envelope.error ?? "failed")}</p>`;
+  const errors = [...(envelope.ok ? [] : [envelope.error ?? "failed"]), ...(drawError ? [drawError] : [])];
+  const error = errors.map((text) => `\n<p class="source-error">${esc(text)}</p>`).join("");
   const size = panel.size === "short" ? "short" : "tall";
   return `<section id="${esc(panel.id)}" class="panel tint-${esc(panel.tint)}" data-source="${esc(source.id)}" data-stale="${stale}" data-size="${size}">
 <div class="panel-head">
@@ -61,7 +64,26 @@ function sectionsFor(entry: PageEntry, view: View): string[] {
     const empty: Panel = { id: source.id, title: source.title, tint: "lilac", html: '<p class="empty">No data yet</p>' };
     return [section(empty, entry, view)];
   }
-  return source.panels(envelope.data, view).map((panel) => section(panel, entry, view));
+  // Data in a shape the source does not expect (a hand-dropped file, an envelope written
+  // by older code) must not take the whole page down: that source shows the error instead.
+  let panels: Panel[];
+  try {
+    panels = source.panels(envelope.data, view);
+  } catch (e) {
+    const blank: Panel = { id: source.id, title: source.title, tint: "lilac", html: "" };
+    return [section(blank, entry, view, `could not draw this panel: ${message(e)}`)];
+  }
+  return panels.map((panel) => section(panel, entry, view));
+}
+
+/** What a source says is waiting on me. A source that cannot say is treated as having nothing. */
+function attentionOf(entry: PageEntry, view: View): AttentionItem[] {
+  if (entry.envelope.data === null) return [];
+  try {
+    return entry.source.attention(entry.envelope.data, view);
+  } catch {
+    return [];
+  }
 }
 
 function attentionList(items: AttentionItem[]): string {
@@ -113,9 +135,7 @@ export function renderPage(input: { view: View; entries: PageEntry[] }): string 
   const { view, entries } = input;
 
   // What I have ticked off by hand no longer waits on me.
-  const waiting = entries
-    .flatMap(({ source, envelope }) => (envelope.data === null ? [] : source.attention(envelope.data, view)))
-    .filter((it) => !isDone(it.doneKey, view));
+  const waiting = entries.flatMap((entry) => attentionOf(entry, view)).filter((it) => !isDone(it.doneKey, view));
   // Only what is shown is counted; old items wait in the accordion.
   const attention = waiting.filter((it) => !isOld(it.at, view));
   const stale = waiting.filter((it) => isOld(it.at, view));

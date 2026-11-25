@@ -1,4 +1,4 @@
-import { readJson } from "../../core/store.ts";
+import { readDropped } from "../../core/store.ts";
 import type { Context } from "../../core/types.ts";
 import { createSlack } from "../slack/client.ts";
 import { permalink } from "../slack/normalise.ts";
@@ -55,7 +55,8 @@ export interface ReviewPosts {
 
 /** The review posts a hand-started sweep dropped in Slack's inbox file, under `reviewPosts`. */
 function fromSweep(ctx: Context): Pick<ReviewPosts, "posts" | "names"> {
-  const file = readJson<{ reviewPosts?: unknown } | null>(ctx.paths.inbox("slack"), null);
+  // Throws if the file will not parse; the caller turns that into "no signals".
+  const file = readDropped(ctx.paths.inbox("slack"), "inbox file") as { reviewPosts?: unknown } | undefined;
   const posts: SlackMessage[] = [];
   const names: Record<string, string> = {};
   for (const raw of Array.isArray(file?.reviewPosts) ? file.reviewPosts : []) {

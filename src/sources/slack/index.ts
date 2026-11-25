@@ -1,4 +1,4 @@
-import { readJson } from "../../core/store.ts";
+import { readDropped } from "../../core/store.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
 import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
@@ -23,9 +23,9 @@ function validate(data: unknown): string[] {
 /** For the inbox transport: is there a swept file, and can it be read? */
 function inboxCheck(ctx: Context): Check {
   const fix = "run /slack-sweep in Claude, in this folder";
-  const dropped = readJson<unknown>(ctx.paths.inbox("slack"), null);
-  if (dropped === null) return { name: "inbox file", ok: false, detail: "nothing has been swept into out/inbox/slack.json yet", fix };
   try {
+    const dropped = readDropped(ctx.paths.inbox("slack"), "out/inbox/slack.json");
+    if (dropped === undefined) return { name: "inbox file", ok: false, detail: "nothing has been swept into out/inbox/slack.json yet", fix };
     const data = fromInbox(dropped, ctx);
     const followed = new Set(data.conversations.map((c) => c.id));
     const swept = ((dropped as { conversations: { id: string }[] }).conversations ?? []).filter((c) => followed.has(c.id)).length;
