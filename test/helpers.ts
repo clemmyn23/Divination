@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "../src/core/config.ts";
 import { createContext } from "../src/core/context.ts";
 import { createSecrets } from "../src/core/secrets.ts";
-import type { AttentionItem, Context, Envelope, Exec, Http, Source, View } from "../src/core/types.ts";
+import { writeJson } from "../src/core/store.ts";
+import type { AttentionItem, Context, Enricher, Envelope, Exec, Http, Source, View } from "../src/core/types.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,6 +50,13 @@ export function fakeSource(over: Partial<Source<any>> = {}): Source<any> {
     panels: () => [],
     ...over,
   };
+}
+
+/** A `fake` source that carries the enricher and already has collected data on disk. */
+export function sourceWith(ctx: Context, enricher: Enricher<any>, data: unknown = {}): Source<any> {
+  const source = fakeSource({ enrichers: [enricher] });
+  writeJson(ctx.paths.data(source.id), ok(data, ctx.now()));
+  return source;
 }
 
 /** An ok envelope for source `fake`. */

@@ -1,3 +1,4 @@
+import { cacheGet } from "../enrich/cache.ts";
 import { ConfigError } from "./config.ts";
 import { readJson, writeJson } from "./store.ts";
 import type { Config, Context, Envelope, Source, View } from "./types.ts";
@@ -68,9 +69,25 @@ export async function collectSource(source: Source<any>, ctx: Context): Promise<
   return envelope;
 }
 
-/** What panels are drawn from: the clock, the config and any cached enrichment (none until Task 12). */
-export function buildView(ctx: Context, _sources: Source<any>[]): View {
-  return { now: ctx.now(), config: ctx.config, enrich: {} };
+/**
+ * What panels are drawn from: the clock, the config, and whatever enrichment is already
+ * in the cache for the items each source has right now. Reading the cache never calls
+ * an LLM.
+ */
+export function buildView(ctx: Context, sources: Source<any>[]): View {
+  const enrich: View["enrich"] = {};
+  for (const source of sources) {
+    if (!source.enrichers || source.enrichers.length === 0) continue;
+    const envelope = readEnvelope(source, ctx);
+    if (envelope.data === null) continue;
+    for (const enricher of source.enrichers) {
+      for (const item of enricher.items(envelope.data, ctx)) {
+        const output = cacheGet(ctx, enricher.id, item.hash);
+        if (output !== undefined) (enrich[enricher.id] ??= {})[item.key] = output;
+      }
+    }
+  }
+  return { now: ctx.now(), config: ctx.config, enrich };
 }
 
 /** Collect every source. One failing source does not stop the others. */

@@ -5,6 +5,7 @@ import type { Context } from "../core/types.ts";
 import { sources } from "../sources/index.ts";
 import { collectCommand } from "./commands/collect.ts";
 import { doctorCommand } from "./commands/doctor.ts";
+import { enrichCommand } from "./commands/enrich.ts";
 import { renderCommand } from "./commands/render.ts";
 import { secretCommand } from "./commands/secret.ts";
 
@@ -23,6 +24,7 @@ export const commands: Record<string, Command> = {
   doctor: doctorCommand(getCtx, sources),
   collect: collectCommand(getCtx, sources),
   render: renderCommand(getCtx, sources),
+  enrich: enrichCommand(getCtx, sources),
   secret: secretCommand(),
 };
 
