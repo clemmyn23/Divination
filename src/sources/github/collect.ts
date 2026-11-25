@@ -3,6 +3,7 @@ import type { Context } from "../../core/types.ts";
 import { classifyRequest } from "./classify.ts";
 import { type Github, createGithub } from "./client.ts";
 import { rankPull, sortPulls } from "./rank.ts";
+import { findSignal, reviewPosts } from "./slack-signal.ts";
 import type { CheckRun, Ci, CombinedStatus, Facts, GithubData, PullRequest, QueueHit } from "./types.ts";
 
 const AT_ONCE = 5;
@@ -55,6 +56,10 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
   const login = await gh.login();
   const hits = await gh.queue(login);
 
+  // What the review channel says about each PR, read once for the whole queue.
+  const review = await reviewPosts(ctx);
+  const { skipReactions } = ctx.config.github.slackSignal;
+
   const cachePath = ctx.paths.cache("github", "facts.json");
   const cached = readJson<Record<string, Facts>>(cachePath, {});
   const kept: Record<string, Facts> = {};
@@ -65,6 +70,7 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
     kept[hit.key] = facts;
 
     const { runs, combined } = await gh.ci(hit.repo, facts.headSha);
+    const signal = findSignal(hit.url, review.posts, ctx.config.slack.userId, skipReactions, review.names, review.linkFor);
 
     const pr: Omit<PullRequest, "rank"> = {
       key: hit.key,
@@ -84,6 +90,7 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
       ci: ciState(runs, combined),
       request: classifyRequest(facts.requests, login, ctx.config.github.rotationTeam),
       reviewedByMeAtHead: facts.reviewedByMeAtHead,
+      ...(signal ? { signal } : {}),
     };
     return { ...pr, rank: rankPull(pr, ctx.config.github.rank, login, ctx.now()) };
   });
