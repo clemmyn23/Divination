@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { tempRoot } from "../../test/helpers.ts";
 import { loadConfig } from "./config.ts";
@@ -54,4 +55,13 @@ test("the Slack team id defaults to empty and must be a string", () => {
   assert.equal(loadConfig(tempRoot()).slack.teamId, "");
   assert.equal(loadConfig(tempRoot({ slack: { teamId: "T02ABC" } })).slack.teamId, "T02ABC");
   assert.throws(() => loadConfig(tempRoot({ slack: { teamId: 7 } })), /slack\.teamId/);
+});
+
+test("the example config in the repo loads over the defaults", () => {
+  const example = JSON.parse(readFileSync(new URL("../../config/local.example.json", import.meta.url), "utf8"));
+  const config = loadConfig(tempRoot(example));
+  assert.equal(config.me.name, "Sam");
+  assert.equal(config.me.timezone, "Australia/Sydney"); // from the defaults
+  assert.deepEqual(config.sources, ["calendar", "github", "slack"]);
+  assert.equal(config.slack.groups.length, 2);
 });

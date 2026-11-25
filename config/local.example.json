@@ -1,20 +1,25 @@
 {
   "me": { "name": "Sam", "email": "sam@example.com" },
+  "sources": ["calendar", "github", "slack"],
   "github": {
     "host": "github.example.com",
     "rotationTeam": "frontend-crew",
+    "crewMembers": ["ana", "kit"],
     "slackSignal": { "channelId": "C00000003" }
   },
   "slack": {
+    "transport": "inbox",
     "workspaceUrl": "https://example.slack.com",
+    "teamId": "T00000000",
     "userId": "U00000000",
+    "muteAuthors": ["Google Calendar"],
     "groups": [
       {
         "name": "Team",
         "kind": "digest",
         "conversations": [
           { "id": "C00000001", "name": "team-dev" },
-          { "id": "D00000001", "name": "Sam", "dm": true }
+          { "id": "U00000001", "name": "Ana", "dm": true }
         ]
       },
       {
@@ -23,5 +28,6 @@
         "conversations": [{ "id": "C00000002", "name": "svc-alerts" }]
       }
     ]
-  }
+  },
+  "calendar": { "transport": "inbox" }
 }
