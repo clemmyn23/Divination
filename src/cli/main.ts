@@ -1,3 +1,10 @@
+import { fileURLToPath } from "node:url";
+import { ConfigError } from "../core/config.ts";
+import { createContext } from "../core/context.ts";
+import type { Context } from "../core/types.ts";
+import { sources } from "../sources/index.ts";
+import { collectCommand } from "./commands/collect.ts";
+import { doctorCommand } from "./commands/doctor.ts";
 import { secretCommand } from "./commands/secret.ts";
 
 export interface Command {
@@ -5,32 +12,45 @@ export interface Command {
   run(args: string[]): Promise<number>;
 }
 
-/** Commands are added here as later stages land (collect, render, serve and so on). */
+const root = fileURLToPath(new URL("../..", import.meta.url));
+
+let context: Context | undefined;
+/** Built on first use, so commands that need no config still work when config is broken. */
+const getCtx = () => (context ??= createContext(root));
+
 export const commands: Record<string, Command> = {
+  doctor: doctorCommand(getCtx, sources),
+  collect: collectCommand(getCtx, sources),
   secret: secretCommand(),
 };
 
-function usage(): string {
-  const names = Object.keys(commands);
-  const width = Math.max(0, ...names.map((n) => n.length));
-  const list = names.length
-    ? names.map((n) => `  ${n.padEnd(width)}  ${commands[n]!.summary}`).join("\n")
-    : "  (none yet)";
-  return `Usage: divination <command>\n\nCommands:\n${list}`;
+function usage(table: Record<string, Command>): string {
+  const list = Object.values(table)
+    .map((command) => `  ${command.summary}`)
+    .join("\n");
+  return `Usage: divination <command>\n\nCommands:\n${list || "  (none)"}`;
 }
 
 /** Run one command. Returns the process exit code. */
-export async function main(argv: string[]): Promise<number> {
+export async function main(argv: string[], table: Record<string, Command> = commands): Promise<number> {
   const [name, ...args] = argv;
   if (name === undefined) {
-    console.log(usage());
+    console.log(usage(table));
     return 1;
   }
-  const command = commands[name];
+  const command = table[name];
   if (command === undefined) {
     console.log(`Unknown command: ${name}\n`);
-    console.log(usage());
+    console.log(usage(table));
     return 1;
   }
-  return command.run(args);
+  try {
+    return await command.run(args);
+  } catch (e) {
+    if (e instanceof ConfigError) {
+      console.log(e.message);
+      return 1;
+    }
+    throw e;
+  }
 }

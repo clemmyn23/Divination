@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createContext } from "../src/core/context.ts";
 import { createSecrets } from "../src/core/secrets.ts";
-import type { Context, Exec, Http } from "../src/core/types.ts";
+import type { Context, Exec, Http, Source } from "../src/core/types.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,6 +34,35 @@ export function contextWith(local?: object, overrides: Partial<Context> = {}): C
     log: () => {},
     ...overrides,
   });
+}
+
+/** A source that does nothing, with id `fake`. Pass any members to replace. */
+export function fakeSource(over: Partial<Source<any>> = {}): Source<any> {
+  return {
+    id: "fake",
+    title: "Fake",
+    doctor: async () => [],
+    collect: async () => ({}),
+    validate: () => [],
+    attention: () => [],
+    panels: () => [],
+    ...over,
+  };
+}
+
+/** Collect what a command prints with console.log. Call `restore()` when done. */
+export function captureLog(): { lines: string[]; restore(): void } {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(...args.join(" ").split("\n"));
+  };
+  return {
+    lines,
+    restore: () => {
+      console.log = original;
+    },
+  };
 }
 
 /**
