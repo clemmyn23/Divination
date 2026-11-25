@@ -89,3 +89,18 @@ test("a host that cannot be reached says so plainly", async () => {
   };
   await assert.rejects(createHttp(f as typeof fetch).json("https://git.example.com/api/v3/user"), /cannot reach git\.example\.com/);
 });
+
+test("text returns the body as it came, and shares the retry and error rules", async () => {
+  const waits: number[] = [];
+  let n = 0;
+  const f = async () => (++n < 2 ? new Response("", { status: 429 }) : new Response("BEGIN:VCALENDAR\r\nEND:VCALENDAR"));
+  const http = createHttp(f as typeof fetch, async (ms) => {
+    waits.push(ms);
+  });
+  const { data } = await http.text("https://x.example/cal.ics");
+  assert.equal(data, "BEGIN:VCALENDAR\r\nEND:VCALENDAR");
+  assert.deepEqual(waits, [1000]);
+
+  const gone = async () => new Response("nope", { status: 404 });
+  await assert.rejects(createHttp(gone as typeof fetch).text("https://x.example/cal.ics"), (e: HttpError) => e.status === 404);
+});

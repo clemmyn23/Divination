@@ -61,11 +61,16 @@ export interface Paths {
   lock: string;
 }
 
+export interface HttpInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
 export interface Http {
-  json<T>(
-    url: string,
-    init?: { method?: string; headers?: Record<string, string>; body?: string },
-  ): Promise<{ data: T; headers: Headers }>;
+  json<T>(url: string, init?: HttpInit): Promise<{ data: T; headers: Headers }>;
+  /** The body as it came, for answers that are not JSON (a calendar file). */
+  text(url: string, init?: HttpInit): Promise<{ data: string; headers: Headers }>;
 }
 
 export type Exec = (

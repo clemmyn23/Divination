@@ -2,7 +2,11 @@
 // the look. Each stand-in source below is replaced by the real source and a JSON envelope
 // as that source lands.
 
+import { isoDate, startOfDay } from "../../../src/core/time.ts";
 import type { Envelope, Panel, Source } from "../../../src/core/types.ts";
+import { dayClass, headline } from "../../../src/sources/calendar/day.ts";
+import { calendar } from "../../../src/sources/calendar/index.ts";
+import type { CalEvent, CalendarData } from "../../../src/sources/calendar/types.ts";
 import { github } from "../../../src/sources/github/index.ts";
 import type { Bucket, Ci, GithubData, PullRequest, Request } from "../../../src/sources/github/types.ts";
 
@@ -23,23 +27,24 @@ function standIn(id: string, title: string, panels: Panel[], attention: Source<a
   };
 }
 
-const today: Panel = {
-  id: "today",
-  title: "Today",
-  tint: "butter",
-  size: "short",
-  html: `<p class="headline">3 meetings today, Sam; the longest gap starts at 11:00.</p>
-<svg class="terrain" viewBox="0 0 840 170" preserveAspectRatio="none" role="img" aria-label="The shape of the day">
-<path d="M0,150 L105,150 C115,150 116,110 126,110 C137,110 137,150 147,150 L252,150 C290,150 300,30 378,30 C456,30 466,150 504,150 L588,150 C610,150 616,70 651,70 C686,70 692,150 714,150 L840,150" />
-</svg>
-<p class="all-day">All day: Release freeze</p>
-<ul class="events">
-<li><span class="time">09:15–09:30</span> Standup</li>
-<li><span class="time">11:00–13:00</span> Planning</li>
-<li class="optional"><span class="time">14:00–14:30</span> Design crit <span class="tag">optional</span></li>
-<li><span class="time">15:00–16:00</span> 1:1 with Ana</li>
-</ul>`,
-};
+// Today is drawn by the real calendar source from these invented meetings.
+function meeting(day: number, startMinute: number, minutes: number, title: string, over: Partial<CalEvent> = {}): CalEvent {
+  const weight = minutes < 30 ? 1 : minutes <= 60 ? 2 : 3;
+  return { start: day + startMinute * 60_000, end: day + (startMinute + minutes) * 60_000, title, allDay: false, optional: false, weight, ...over };
+}
+
+function dayAt(now: number, tz: string): CalendarData {
+  const day = startOfDay(now, tz);
+  const events = [
+    meeting(day, 0, 1440, "Release freeze", { allDay: true, weight: 1 }),
+    meeting(day, 555, 15, "Standup"),
+    meeting(day, 660, 120, "Planning"),
+    meeting(day, 840, 30, "Design crit", { optional: true }),
+    meeting(day, 900, 60, "1:1 with Ana"),
+  ];
+  const cls = dayClass(events);
+  return { date: isoDate(now, tz), events, dayClass: cls, headline: headline(cls, events, "Sam", tz), unsupported: ["Month-end close"] };
+}
 
 // The review queue is drawn by the real GitHub source from this invented data.
 function pr(
@@ -191,10 +196,10 @@ function envelope(id: string, collectedAt: number, error?: string): Envelope<any
 }
 
 /** The sample page's sources and their envelopes, relative to `now`. */
-export function fixtureEntries(now: number): Entry[] {
+export function fixtureEntries(now: number, tz = "Australia/Sydney"): Entry[] {
   const minute = 60_000;
   return [
-    { source: standIn("calendar", "Today", [today]), envelope: envelope("calendar", now - 4 * minute) },
+    { source: calendar, envelope: { ...envelope("calendar", now - 4 * minute), data: dayAt(now, tz) } },
     { source: github, envelope: { ...envelope("github", now - 4 * minute), data: queueAt(now) } },
     {
       source: standIn("slack", "Slack", [slack], () => [

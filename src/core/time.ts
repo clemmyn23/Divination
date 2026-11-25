@@ -71,7 +71,18 @@ export function startOfDay(now: number, tz: string): number {
   return fromZoned({ year: p.year, month: p.month, day: p.day }, tz);
 }
 
+/** Midnight at the end of the local day that starts at `dayStart`. A day is not always 24 hours long. */
+export function endOfDay(dayStart: number, tz: string): number {
+  return startOfDay(dayStart + 36 * 3_600_000, tz);
+}
+
 const two = (n: number) => String(n).padStart(2, "0");
+
+/** The local date as `YYYY-MM-DD`. */
+export function isoDate(ms: number, tz: string): string {
+  const p = zoned(ms, tz);
+  return `${p.year}-${two(p.month)}-${two(p.day)}`;
+}
 
 /** `HH:MM` on the 24-hour clock in a timezone. */
 export function hhmm(ms: number, tz: string): string {

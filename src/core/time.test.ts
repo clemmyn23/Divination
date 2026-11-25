@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { hhmm, parseHhmm, startOfDay, withinActiveHours } from "./time.ts";
+import { endOfDay, hhmm, isoDate, parseHhmm, startOfDay, withinActiveHours } from "./time.ts";
 
 const at = (iso: string) => Date.parse(iso);
 const SYDNEY = "Australia/Sydney"; // UTC+11 in November
@@ -47,4 +47,12 @@ test("start of day is right on a daylight-saving change day", () => {
 
 test("start of day works in UTC too", () => {
   assert.equal(startOfDay(at("2026-11-24T22:05:00Z"), "UTC"), at("2026-11-24T00:00:00Z"));
+});
+
+test("the local date and the next local midnight", () => {
+  assert.equal(isoDate(at("2026-11-24T22:05:00Z"), SYDNEY), "2026-11-25");
+  assert.equal(isoDate(at("2026-01-04T12:59:00Z"), SYDNEY), "2026-01-04");
+  assert.equal(endOfDay(at("2026-11-24T13:00:00Z"), SYDNEY), at("2026-11-25T13:00:00Z"));
+  // Sydney's clocks go forward on 4 October 2026, so that day is 23 hours long.
+  assert.equal(endOfDay(at("2026-10-03T14:00:00Z"), SYDNEY) - at("2026-10-03T14:00:00Z"), 23 * 3_600_000);
 });

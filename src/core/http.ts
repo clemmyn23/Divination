@@ -1,4 +1,4 @@
-import type { Http } from "./types.ts";
+import type { Http, HttpInit } from "./types.ts";
 
 const MAX_RETRIES = 3;
 const BODY_LIMIT = 200;
@@ -29,37 +29,46 @@ function hostOf(url: string): string {
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
- * A small JSON client. A 429 waits for `Retry-After` (one second if absent) and tries
- * again, up to three retries. Anything else outside 2xx is an HttpError.
+ * A small client for JSON and plain text. A 429 waits for `Retry-After` (one second if
+ * absent) and tries again, up to three retries. Anything else outside 2xx is an HttpError.
  */
 export function createHttp(fetchImpl: typeof fetch = fetch, sleep: (ms: number) => Promise<void> = realSleep): Http {
-  return {
-    async json<T>(url: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) {
-      for (let attempt = 0; ; attempt++) {
-        let res: Response;
-        try {
-          res = await fetchImpl(url, { method: init.method ?? "GET", headers: init.headers, body: init.body });
-        } catch (e) {
-          throw new Error(`cannot reach ${hostOf(url)}: ${(e as Error).message}`);
-        }
-
-        if (res.status === 429 && attempt < MAX_RETRIES) {
-          const seconds = Number(res.headers.get("retry-after"));
-          await sleep((Number.isFinite(seconds) && seconds > 0 ? seconds : 1) * 1000);
-          continue;
-        }
-        if (!res.ok) {
-          const body = (await res.text().catch(() => "")).slice(0, BODY_LIMIT);
-          throw new HttpError(res.status, url, body);
-        }
-
-        const text = await res.text();
-        try {
-          return { data: JSON.parse(text) as T, headers: res.headers };
-        } catch {
-          throw new HttpError(res.status, url, "response was not JSON");
-        }
+  async function request(url: string, init: HttpInit): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await fetchImpl(url, { method: init.method ?? "GET", headers: init.headers, body: init.body });
+      } catch (e) {
+        throw new Error(`cannot reach ${hostOf(url)}: ${(e as Error).message}`);
       }
+
+      if (res.status === 429 && attempt < MAX_RETRIES) {
+        const seconds = Number(res.headers.get("retry-after"));
+        await sleep((Number.isFinite(seconds) && seconds > 0 ? seconds : 1) * 1000);
+        continue;
+      }
+      if (!res.ok) {
+        const body = (await res.text().catch(() => "")).slice(0, BODY_LIMIT);
+        throw new HttpError(res.status, url, body);
+      }
+      return res;
+    }
+  }
+
+  return {
+    async json<T>(url: string, init: HttpInit = {}) {
+      const res = await request(url, init);
+      const text = await res.text();
+      try {
+        return { data: JSON.parse(text) as T, headers: res.headers };
+      } catch {
+        throw new HttpError(res.status, url, "response was not JSON");
+      }
+    },
+
+    async text(url: string, init: HttpInit = {}) {
+      const res = await request(url, init);
+      return { data: await res.text(), headers: res.headers };
     },
   };
 }

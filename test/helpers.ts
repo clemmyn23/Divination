@@ -128,18 +128,20 @@ function isWithHeaders(v: unknown): v is { $data: unknown; $headers: Record<stri
 export function fakeHttp(routes: Record<string, unknown | ((url: string) => unknown)>): Http & { calls: string[] } {
   const calls: string[] = [];
   const keys = Object.keys(routes).sort((a, b) => b.length - a.length);
+  async function answerFor<T>(url: string): Promise<{ data: T; headers: Headers }> {
+    calls.push(url);
+    const key = keys.find((k) => url.startsWith(k));
+    if (key === undefined) throw new Error(`fakeHttp: no route for ${url}`);
+    const value = routes[key];
+    const answer = typeof value === "function" ? (value as (url: string) => unknown)(url) : value;
+    if (answer instanceof Error) throw answer;
+    if (isWithHeaders(answer)) return { data: answer.$data as T, headers: new Headers(answer.$headers) };
+    return { data: answer as T, headers: new Headers() };
+  }
   return {
     calls,
-    async json<T>(url: string) {
-      calls.push(url);
-      const key = keys.find((k) => url.startsWith(k));
-      if (key === undefined) throw new Error(`fakeHttp: no route for ${url}`);
-      const value = routes[key];
-      const answer = typeof value === "function" ? (value as (url: string) => unknown)(url) : value;
-      if (answer instanceof Error) throw answer;
-      if (isWithHeaders(answer)) return { data: answer.$data as T, headers: new Headers(answer.$headers) };
-      return { data: answer as T, headers: new Headers() };
-    },
+    json: <T>(url: string) => answerFor<T>(url),
+    text: (url: string) => answerFor<string>(url),
   };
 }
 
