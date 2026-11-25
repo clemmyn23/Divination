@@ -1,6 +1,8 @@
+import { readJson } from "../../core/store.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
 import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
+import { fromInbox } from "./inbox.ts";
 import { conversationsFromConfig } from "./normalise.ts";
 import { slackPanels, threadKey, tsMs } from "./panel.ts";
 import { slackSummary } from "./summary.enricher.ts";
@@ -18,7 +20,25 @@ function validate(data: unknown): string[] {
   return problems;
 }
 
+/** For the inbox transport: is there a swept file, and can it be read? */
+function inboxCheck(ctx: Context): Check {
+  const fix = "run /slack-sweep in Claude, in this folder";
+  const dropped = readJson<unknown>(ctx.paths.inbox("slack"), null);
+  if (dropped === null) return { name: "inbox file", ok: false, detail: "nothing has been swept into out/inbox/slack.json yet", fix };
+  try {
+    const data = fromInbox(dropped, ctx);
+    const followed = new Set(data.conversations.map((c) => c.id));
+    const swept = ((dropped as { conversations: { id: string }[] }).conversations ?? []).filter((c) => followed.has(c.id)).length;
+    const alerts = Object.values(data.alerts).reduce((sum, rows) => sum + rows.reduce((n, row) => n + row.count, 0), 0);
+    const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+    return { name: "inbox file", ok: true, detail: `${count(data.threads.length, "thread")} and ${count(alerts, "alert")} from ${count(swept, "conversation")}` };
+  } catch (e) {
+    return { name: "inbox file", ok: false, detail: e instanceof Error ? e.message : String(e), fix };
+  }
+}
+
 async function doctor(ctx: Context): Promise<Check[]> {
+  if (ctx.config.slack.transport === "inbox") return [inboxCheck(ctx)];
   if (!(await ctx.secrets.get("slack"))) {
     return [{ name: "token", ok: false, detail: "no Slack token is stored", fix: SET_IT }];
   }
@@ -58,12 +78,16 @@ async function doctor(ctx: Context): Promise<Check[]> {
   return checks;
 }
 
-/** Slack: the channels and direct messages named in `slack.groups`. */
+/**
+ * Slack: the channels and direct messages named in `slack.groups`, read through the Web
+ * API or, with the inbox transport, from the file a sweep dropped (`prompts/slack-sweep.md`).
+ */
 export const slack: Source<SlackData> = {
   id: "slack",
   title: "Slack",
   doctor,
   collect: collectSlack,
+  fromInbox,
   validate,
   attention: (data) => {
     const byId = new Map(data.conversations.map((c) => [c.id, c]));

@@ -115,9 +115,11 @@ export async function collectSlack(ctx: Context): Promise<SlackData> {
     }
     for (const parent of parents) {
       const messages = replies.get(parent.ts) ?? [parent];
+      const reason = needsYou(messages, userId, conversation.kind);
+      // A lone post by an app (a review request, a deploy notice) is noise unless it names me.
+      if (parent.bot_id && !parent.user && messages.length === 1 && !reason) continue;
       await learn(messages);
       const thread = toThread(conversation, messages, names, workspaceUrl);
-      const reason = needsYou(messages, userId, conversation.kind);
       threads.push(reason ? { ...thread, needsYou: reason } : thread);
     }
   }

@@ -10,6 +10,7 @@ import { renderCommand } from "./commands/render.ts";
 import { scheduleCommand } from "./commands/schedule.ts";
 import { secretCommand } from "./commands/secret.ts";
 import { serveCommand } from "./commands/serve.ts";
+import { sweepPlanCommand } from "./commands/sweep-plan.ts";
 import { tickCommand } from "./commands/tick.ts";
 
 export interface Command {
@@ -32,6 +33,7 @@ export const commands: Record<string, Command> = {
   enrich: enrichCommand(getCtx, sources),
   schedule: scheduleCommand(getCtx),
   secret: secretCommand(),
+  "sweep-plan": sweepPlanCommand(getCtx),
 };
 
 function usage(table: Record<string, Command>): string {

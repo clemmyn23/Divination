@@ -201,3 +201,21 @@ test("a direct message is one conversation: answering later clears it, and the n
   assert.deepEqual([thread!.needsYou, thread!.excerpt, thread!.messageCount, thread!.latestTs], ["waiting on your reply", "Thanks!", 2, "1795561400.000700"]);
   assert.equal(thread!.url, "https://w.slack.com/archives/D1/p1795561300000600");
 });
+
+test("a lone post by an app is left out; one with replies, or that names me, is kept", async () => {
+  const routes = slackRoutes();
+  routes[`${API}conversations.history?channel=C1`] = {
+    ok: true,
+    messages: [
+      { ts: "1795562900.000900", bot_id: "B9", text: "assigned to <@ME>" },
+      { ts: "1795562800.000800", bot_id: "B9", text: "deploy failed", thread_ts: "1795562800.000800", reply_count: 1 },
+      { ts: "1795562700.000700", bot_id: "B9", text: "requested a review" },
+    ],
+  };
+  routes[`${API}conversations.replies?channel=C1&ts=1795562800.000800`] = { ok: true, messages: [{ ts: "1795562800.000800", bot_id: "B9", text: "deploy failed" }, { ts: "1795562850.000850", user: "U1", text: "on it" }] };
+  const data = await collectSlack(contextWith(SLACK_LOCAL, { http: fakeHttp(routes), secrets: token }));
+  assert.deepEqual(
+    data.threads.filter((t) => t.channelId === "C1").map((t) => t.excerpt),
+    ["deploy failed", "assigned to @ME"],
+  );
+});
