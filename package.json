@@ -1,0 +1,22 @@
+{
+  "name": "divination",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A cutesy local dashboard for the work day: calendar, PR review queue and Slack digest.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "bin": {
+    "divination": "bin/divination.ts"
+  },
+  "scripts": {
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "divination": "node bin/divination.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}

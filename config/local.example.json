@@ -1,0 +1,27 @@
+{
+  "me": { "name": "Sam", "email": "sam@example.com" },
+  "github": {
+    "host": "github.example.com",
+    "rotationTeam": "frontend-crew",
+    "slackSignal": { "channelId": "C00000003" }
+  },
+  "slack": {
+    "workspaceUrl": "https://example.slack.com",
+    "userId": "U00000000",
+    "groups": [
+      {
+        "name": "Team",
+        "kind": "digest",
+        "conversations": [
+          { "id": "C00000001", "name": "team-dev" },
+          { "id": "D00000001", "name": "Sam", "dm": true }
+        ]
+      },
+      {
+        "name": "Alerts",
+        "kind": "alerts",
+        "conversations": [{ "id": "C00000002", "name": "svc-alerts" }]
+      }
+    ]
+  }
+}
