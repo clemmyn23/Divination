@@ -1,10 +1,14 @@
+import { secretCommand } from "./commands/secret.ts";
+
 export interface Command {
   summary: string;
   run(args: string[]): Promise<number>;
 }
 
 /** Commands are added here as later stages land (collect, render, serve and so on). */
-export const commands: Record<string, Command> = {};
+export const commands: Record<string, Command> = {
+  secret: secretCommand(),
+};
 
 function usage(): string {
   const names = Object.keys(commands);
