@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { cacheGet } from "../enrich/cache.ts";
 import { ConfigError } from "./config.ts";
 import { readJson, writeJson } from "./store.ts";
@@ -27,16 +28,19 @@ export function readEnvelope(source: Source<any>, ctx: Context): Envelope<unknow
   });
 }
 
-function transportOf(config: Config, id: string): string | undefined {
+/** How a source gets its data: `api`, `ics`, or `inbox` for a file dropped by hand. */
+export function transportOf(config: Config, id: string): string | undefined {
   const block = (config as unknown as Record<string, { transport?: string } | undefined>)[id];
   return block?.transport;
 }
 
-async function gather(source: Source<any>, ctx: Context): Promise<unknown> {
-  if (transportOf(ctx.config, source.id) !== "inbox") return source.collect(ctx);
-  const dropped = readJson<unknown>(ctx.paths.inbox(source.id), null);
+/** The source's data and when it was gathered. Inbox data is as old as the file it came from. */
+async function gather(source: Source<any>, ctx: Context): Promise<{ data: unknown; at: number }> {
+  if (transportOf(ctx.config, source.id) !== "inbox") return { data: await source.collect(ctx), at: ctx.now() };
+  const path = ctx.paths.inbox(source.id);
+  const dropped = readJson<unknown>(path, null);
   if (dropped === null) throw new Error("inbox file missing");
-  return dropped;
+  return { data: source.fromInbox ? source.fromInbox(dropped, ctx) : dropped, at: Math.round(statSync(path).mtimeMs) };
 }
 
 /**
@@ -49,10 +53,10 @@ export async function collectSource(source: Source<any>, ctx: Context): Promise<
 
   let envelope: Envelope<unknown>;
   try {
-    const data = await gather(source, ctx);
+    const { data, at } = await gather(source, ctx);
     const problems = source.validate(data);
     if (problems.length > 0) throw new Error(problems.join("; "));
-    envelope = { source: source.id, ok: true, collectedAt: now, attemptedAt: now, data };
+    envelope = { source: source.id, ok: true, collectedAt: at, attemptedAt: now, data };
   } catch (e) {
     envelope = {
       source: source.id,

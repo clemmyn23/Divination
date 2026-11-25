@@ -387,7 +387,8 @@
   color: var(--ink-soft);
 }
 
-.events .optional {
+.events .optional,
+.events .block {
   color: var(--ink-soft);
 }
 

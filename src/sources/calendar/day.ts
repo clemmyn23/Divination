@@ -10,13 +10,15 @@ const HEAVY_MINUTES = 300;
 const HEAVY_RUN = 3;
 const OPEN_MAX_MINUTES = 30;
 
-function weightOf(minutes: number): 1 | 2 | 3 {
+export function weightOf(minutes: number): 1 | 2 | 3 {
   if (minutes < 30) return 1;
   return minutes <= 60 ? 2 : 3;
 }
 
 const isDropped = (ev: RawEvent) => ev.status === "CANCELLED" || ev.myPartstat === "DECLINED";
-const isOptional = (ev: RawEvent) => ev.myPartstat === "NEEDS-ACTION" || ev.myPartstat === "TENTATIVE";
+// Only a "maybe" is optional. An invitation left unanswered is the normal state of a
+// team's standing meetings, so it counts as a meeting.
+const isOptional = (ev: RawEvent) => ev.myPartstat === "TENTATIVE";
 
 /**
  * What is on the local day that starts at `dayStart`. Cancelled events and ones I
@@ -70,9 +72,9 @@ export function eventsForDay(raw: RawEvent[], dayStart: number, tz: string): { e
   return { events, unsupported: [...unsupported] };
 }
 
-/** The meetings that shape the day: timed, and accepted. */
+/** The meetings that shape the day: timed, accepted, and not time I blocked out myself. */
 function meetings(events: CalEvent[]): CalEvent[] {
-  return events.filter((e) => !e.allDay && !e.optional).sort((a, b) => a.start - b.start);
+  return events.filter((e) => !e.allDay && !e.optional && !e.block).sort((a, b) => a.start - b.start);
 }
 
 /**

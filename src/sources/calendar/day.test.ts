@@ -87,6 +87,17 @@ test("declining one occurrence of a series removes only that one", () => {
   assert.equal(eventsForDay(raw, wed - 7 * 86_400_000, SYDNEY).events.length, 1);
 });
 
+test("an invitation I have not answered still counts as a meeting", () => {
+  const raw = parseIcs(
+    ics(["UID:a", "SUMMARY:Standup", "DTSTART:20261125T000000Z", "DTEND:20261125T001500Z", "ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:me@example.com"]),
+    "me@example.com",
+  );
+  assert.deepEqual(
+    eventsForDay(raw, wed, SYDNEY).events.map((e) => [e.title, e.optional]),
+    [["Standup", false]],
+  );
+});
+
 test("all-day events are marked, weigh 1 and come first; a tentative yes is optional", () => {
   const raw = parseIcs(
     ics(
@@ -151,4 +162,11 @@ test("the normal headline names the longest gap, and reads properly with one mee
     headline("normal", [mins(600, 60), mins(630, 60)], "Clem", SYDNEY),
     "2 meetings today, Clem, with no gap between them.",
   );
+});
+
+test("my own blocks (focus time, away) are not meetings", () => {
+  const focus = mins(540, 300, { block: "focus" });
+  assert.equal(dayClass([focus]), "open");
+  assert.equal(dayClass([focus, mins(900, 45)]), "normal");
+  assert.equal(headline("normal", [focus, mins(900, 45)], "Clem", SYDNEY), "One meeting today, Clem, at 15:00.");
 });

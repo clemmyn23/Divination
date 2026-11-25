@@ -16,6 +16,7 @@ function clockOn(date: string, clock: string, tz: string): number {
 
 function row(event: CalEvent, tz: string): string {
   const time = `<span class="time">${hhmm(event.start, tz)}–${hhmm(event.end, tz)}</span>`;
+  if (event.block) return `<li class="block">${time} ${esc(event.title)} <span class="tag">${event.block}</span></li>`;
   if (!event.optional) return `<li>${time} ${esc(event.title)}</li>`;
   return `<li class="optional">${time} ${esc(event.title)} <span class="tag">optional</span></li>`;
 }

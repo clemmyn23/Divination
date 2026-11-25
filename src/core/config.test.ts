@@ -31,3 +31,9 @@ test("config problems are all listed", () => {
     (e: Error) => /tick\.start/.test(e.message) && /kind/.test(e.message) && /name/.test(e.message),
   );
 });
+
+test("inboxStaleAfterMinutes defaults to twelve hours and must be a positive number", () => {
+  assert.equal(loadConfig(tempRoot()).inboxStaleAfterMinutes, 720);
+  assert.throws(() => loadConfig(tempRoot({ inboxStaleAfterMinutes: 0 })), /inboxStaleAfterMinutes/);
+  assert.throws(() => loadConfig(tempRoot({ inboxStaleAfterMinutes: "720" })), /inboxStaleAfterMinutes/);
+});

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { utimesSync } from "node:fs";
 import { test } from "node:test";
 import { NOW, contextWith, fakeSource } from "../../test/helpers.ts";
 import { ConfigError } from "./config.ts";
@@ -58,6 +59,37 @@ test("inbox transport reads the dropped file and still validates", async () => {
 
   const strict = fakeSource({ validate: () => ["bad shape"] });
   assert.equal((await collectSource(strict, ctx)).error, "bad shape");
+});
+
+test("a source can work on what was dropped in its inbox before it is checked", async () => {
+  const ctx = contextWith({ fake: { transport: "inbox" } });
+  writeJson(ctx.paths.inbox("fake"), { n: 2 });
+  const doubles = fakeSource({
+    fromInbox: (dropped: unknown) => ({ n: (dropped as { n: number }).n * 2 }),
+    validate: (data: unknown) => ((data as { n: number }).n === 4 ? [] : ["not doubled"]),
+  });
+  const envelope = await collectSource(doubles, ctx);
+  assert.equal(envelope.ok, true);
+  assert.deepEqual(envelope.data, { n: 4 });
+
+  const throws = fakeSource({
+    fromInbox: () => {
+      throw new Error("cannot read that");
+    },
+  });
+  assert.equal((await collectSource(throws, ctx)).error, "cannot read that");
+});
+
+test("inbox data is as old as its file, not as new as the last look at it", async () => {
+  const ctx = contextWith({ fake: { transport: "inbox" } });
+  writeJson(ctx.paths.inbox("fake"), { n: 2 });
+  const droppedAt = Date.parse("2026-11-24T21:05:00Z"); // 08:05 in Sydney, two hours before NOW
+  utimesSync(ctx.paths.inbox("fake"), droppedAt / 1000, droppedAt / 1000);
+
+  const envelope = await collectSource(fakeSource(), ctx);
+  assert.equal(envelope.ok, true);
+  assert.equal(envelope.collectedAt, droppedAt);
+  assert.equal(envelope.attemptedAt, ctx.now());
 });
 
 test("one failing source does not stop the others", async () => {

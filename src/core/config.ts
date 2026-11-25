@@ -62,6 +62,11 @@ function problemsIn(config: Config): string[] {
     problems.push(`hideOlderThanDays must be a number of days, 0 or more (got ${shown(hide)})`);
   }
 
+  const inboxStale: unknown = config.inboxStaleAfterMinutes;
+  if (typeof inboxStale !== "number" || !Number.isFinite(inboxStale) || inboxStale <= 0) {
+    problems.push(`inboxStaleAfterMinutes must be a number of minutes above 0 (got ${shown(inboxStale)})`);
+  }
+
   for (const id of ["github", "slack", "calendar"] as const) {
     const transport = config[id]?.transport;
     if (!TRANSPORTS.includes(transport)) {

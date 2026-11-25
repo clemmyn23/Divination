@@ -32,6 +32,8 @@ export interface CalEvent {
   optional: boolean;
   /** How much of the day it takes: 1 under half an hour, 2 up to an hour, 3 longer. */
   weight: 1 | 2 | 3;
+  /** Time I set aside myself (focus time, being away) rather than a meeting. Shown, but not counted or drawn. */
+  block?: "focus" | "away";
 }
 
 export type DayClass = "heavy" | "normal" | "open";

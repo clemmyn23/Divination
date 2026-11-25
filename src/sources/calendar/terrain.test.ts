@@ -62,3 +62,7 @@ test("width and height can be changed", () => {
   assert.ok(d.endsWith("100,100"));
   assert.equal(Math.min(...pairs(d).map((q) => q[1])), 20);
 });
+
+test("my own blocks draw no hill", () => {
+  assert.equal(terrainPath([mins(540, 180, { block: "focus" })], opts), "M0,150 L840,150");
+});

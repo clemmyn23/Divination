@@ -1,8 +1,10 @@
 import { HttpError } from "../../core/http.ts";
+import { readJson } from "../../core/store.ts";
 import { isoDate, startOfDay } from "../../core/time.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
 import { dayClass, eventsForDay, headline } from "./day.ts";
 import { parseIcs } from "./ics.ts";
+import { fromInbox } from "./inbox.ts";
 import { calendarPanels } from "./panel.ts";
 import type { CalendarData } from "./types.ts";
 
@@ -55,7 +57,22 @@ function validate(data: unknown): string[] {
   return problems;
 }
 
+/** For the inbox transport: is there a dropped file, and can it be read? */
+function inboxCheck(ctx: Context): Check {
+  const fix = "run /calendar-read in Claude, in this folder";
+  const dropped = readJson<unknown>(ctx.paths.inbox("calendar"), null);
+  if (dropped === null) return { name: "inbox file", ok: false, detail: "nothing has been read into out/inbox/calendar.json yet", fix };
+  try {
+    const data = fromInbox(dropped, ctx);
+    const n = data.events.length;
+    return { name: "inbox file", ok: true, detail: `${n} ${n === 1 ? "event" : "events"} for ${data.date}` };
+  } catch (e) {
+    return { name: "inbox file", ok: false, detail: e instanceof Error ? e.message : String(e), fix };
+  }
+}
+
 async function doctor(ctx: Context): Promise<Check[]> {
+  if (ctx.config.calendar.transport === "inbox") return [inboxCheck(ctx)];
   if (!(await ctx.secrets.get(SECRET))) {
     return [{ name: "address", ok: false, detail: "no calendar address is stored", fix: SET_IT }];
   }
@@ -69,12 +86,16 @@ async function doctor(ctx: Context): Promise<Check[]> {
   return checks;
 }
 
-/** Today's meetings, read from the calendar's private iCal address. */
+/**
+ * Today's meetings: fetched from the calendar's private iCal address, or, with the inbox
+ * transport, taken from the file a calendar read dropped (see `prompts/calendar-read.md`).
+ */
 export const calendar: Source<CalendarData> = {
   id: "calendar",
   title: "Today",
   doctor,
   collect,
+  fromInbox,
   validate,
   attention: () => [],
   panels: calendarPanels,

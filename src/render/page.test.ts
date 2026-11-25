@@ -258,3 +258,16 @@ test("the page carries its own favicon, with a badge when something needs you", 
   const busy = renderPage({ view, entries: [{ source: fakeSource({ attention: () => [item("1")] }), envelope: ok({}) }] });
   assert.ok(decodeURIComponent(busy.match(/<link rel="icon"[^>]*href="([^"]+)"/)![1]!).includes('class="badge"'));
 });
+
+test("a source fed by hand through its inbox stays fresh for longer", () => {
+  const twoHoursAgo = NOW - 120 * 60_000;
+  const fetched = renderPage({ view, entries: [{ source: fakeSource({ panels: () => [panel()] }), envelope: ok({}, twoHoursAgo) }] });
+  assert.ok(fetched.includes('data-stale="true"')); // the usual limit is an hour
+
+  const byHand = { ...view, config: { ...view.config, fake: { transport: "inbox" } } as typeof view.config };
+  const dropped = renderPage({ view: byHand, entries: [{ source: fakeSource({ panels: () => [panel()] }), envelope: ok({}, twoHoursAgo) }] });
+  assert.ok(dropped.includes('data-stale="false"'));
+
+  const yesterday = renderPage({ view: byHand, entries: [{ source: fakeSource({ panels: () => [panel()] }), envelope: ok({}, NOW - 13 * 3_600_000) }] });
+  assert.ok(yesterday.includes('data-stale="true"'));
+});

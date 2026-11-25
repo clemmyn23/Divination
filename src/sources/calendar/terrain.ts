@@ -25,7 +25,7 @@ export function terrainPath(
 
   const hills: { from: number; to: number; weight: number }[] = [];
   const timed = events
-    .filter((e) => !e.allDay)
+    .filter((e) => !e.allDay && !e.block)
     .map((e) => ({ from: Math.max(e.start, opts.dayStart), to: Math.min(e.end, opts.dayEnd), weight: e.weight }))
     .filter((e) => e.to > e.from)
     .sort((a, b) => a.from - b.from);

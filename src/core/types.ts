@@ -25,6 +25,8 @@ export interface Config {
   sources: string[];
   tick: { minutes: number; days: number[]; start: string; end: string };
   staleAfterMinutes: number;
+  /** The same limit for a source fed by hand through its inbox, which is read far less often. */
+  inboxStaleAfterMinutes: number;
   /** PRs and other waiting things older than this are folded into "stale tasks". 0 never folds. */
   hideOlderThanDays: number;
   enrich: { maxBudgetUsd: number };
@@ -147,6 +149,11 @@ export interface Source<TData> {
   title: string;
   doctor(ctx: Context): Promise<Check[]>;
   collect(ctx: Context): Promise<TData>;
+  /**
+   * Turn what was dropped in this source's inbox file into its data. Without this, the
+   * dropped file must already be the data. Throw to refuse a file in the wrong shape.
+   */
+  fromInbox?(dropped: unknown, ctx: Context): TData;
   /** Problems with the data; empty means valid. */
   validate(data: unknown): string[];
   attention(data: TData, view: View): AttentionItem[];

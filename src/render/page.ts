@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { transportOf } from "../core/pipeline.ts";
 import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
 import { faviconHref } from "./favicon.ts";
@@ -24,9 +25,12 @@ function styles(): string {
     .join("\n");
 }
 
-function isStale(envelope: Envelope<unknown>, view: View): boolean {
+/** Data goes stale after an hour, or after half a day for a source that is fed by hand. */
+function isStale(sourceId: string, envelope: Envelope<unknown>, view: View): boolean {
   if (envelope.collectedAt === 0) return true;
-  return view.now - envelope.collectedAt > view.config.staleAfterMinutes * 60_000;
+  const byHand = transportOf(view.config, sourceId) === "inbox";
+  const minutes = byHand ? view.config.inboxStaleAfterMinutes : view.config.staleAfterMinutes;
+  return view.now - envelope.collectedAt > minutes * 60_000;
 }
 
 function updatedText(envelope: Envelope<unknown>, view: View): string {
@@ -36,7 +40,7 @@ function updatedText(envelope: Envelope<unknown>, view: View): string {
 
 function section(panel: Panel, entry: PageEntry, view: View): string {
   const { source, envelope } = entry;
-  const stale = isStale(envelope, view);
+  const stale = isStale(source.id, envelope, view);
   const error = envelope.ok ? "" : `\n<p class="source-error">${esc(envelope.error ?? "failed")}</p>`;
   const size = panel.size === "short" ? "short" : "tall";
   return `<section id="${esc(panel.id)}" class="panel tint-${esc(panel.tint)}" data-source="${esc(source.id)}" data-stale="${stale}" data-size="${size}">
