@@ -22,6 +22,7 @@ function rawTitle(m: SlackMessage): string {
 export function alertTitle(m: SlackMessage): string {
   const title = plainText(rawTitle(m), {})
     .replace(/\*/g, "")
+    .replace(/:[a-z+-][a-z0-9_+-]*:/g, "") // emoji codes such as :red_circle:
     .replace(/\d{3,}/g, "#")
     .replace(/\s+/g, " ")
     .trim();

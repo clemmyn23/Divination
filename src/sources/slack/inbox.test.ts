@@ -82,7 +82,7 @@ test("code, not the reader, decides what needs me, from plain facts about each t
   assert.equal(answered.threads[0]!.needsYou, undefined);
 });
 
-test("a lone post by an app is noise and is left out, unless someone replied or it names me", () => {
+test("a lone post by an app is noise and is left out, even when it names me, unless someone replied", () => {
   const data = fromInbox(
     swept([
       {
@@ -90,15 +90,19 @@ test("a lone post by an app is noise and is left out, unless someone replied or 
         threads: [
           thread(today(1), { fromApp: true, excerpt: "requested a review" }),
           thread(today(2), { fromApp: true, messageCount: 2, excerpt: "deploy failed" }),
-          thread(today(3), { fromApp: true, mentionsMe: true, excerpt: "assigned to you" }),
+          thread(today(3), { fromApp: true, mentionsMe: true, excerpt: "you requested a review" }),
+          thread(today(4), { fromApp: true, messageCount: 3, mentionsMe: true, excerpt: "review requested" }),
         ],
       },
     ]),
     ctx(),
   );
   assert.deepEqual(
-    data.threads.map((t) => t.excerpt),
-    ["deploy failed", "assigned to you"],
+    data.threads.map((t) => [t.excerpt, t.needsYou]),
+    [
+      ["deploy failed", undefined],
+      ["review requested", "mentioned you"], // a person named me in the replies
+    ],
   );
 });
 
@@ -169,4 +173,25 @@ test("with the inbox transport, collect and doctor work from the dropped file", 
   assert.ok(panels[0]!.html.includes("Can you &lt;look&gt;?"));
   assert.ok(panels[1]!.html.includes("Triggered: A"));
   assert.equal(slack.attention(envelope.data as never, { ...view, config: c.config }).length, 1);
+});
+
+test("threads written only by muted authors (calendar reminders, review bots) are left out", () => {
+  const c = contextWith({ ...SLACK_LOCAL, slack: { ...SLACK_LOCAL.slack, transport: "inbox", muteAuthors: ["Google Calendar", "cm github"] } });
+  const data = fromInbox(
+    swept([
+      {
+        id: "C1",
+        threads: [
+          thread(today(1), { authors: ["Google Calendar"], excerpt: "10 minutes until standup" }),
+          thread(today(2), { authors: ["CM GitHub", "rusty"], messageCount: 2, excerpt: "review requested" }),
+          thread(today(3), { authors: ["Sam"], excerpt: "hello" }),
+        ],
+      },
+    ]),
+    c,
+  );
+  assert.deepEqual(
+    data.threads.map((t) => t.excerpt),
+    ["review requested", "hello"],
+  );
 });

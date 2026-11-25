@@ -26,3 +26,9 @@ test("reacting to the last message answers it", () => {
   assert.equal(needsYou([m("1", "ME", "shipping it"), m("2", "U1", "which env?", true)], "ME", "channel"), undefined);
   assert.equal(needsYou([m("1", "ME", "shipping it"), m("2", "U1", "which env?  ")], "ME", "channel"), "question in a thread you're in");
 });
+
+test("an app naming me is not someone asking for me", () => {
+  const app = { ts: "1", bot_id: "B1", text: "<@ME> requested a review from Team Mitnick" };
+  assert.equal(needsYou([app], "ME", "channel"), undefined);
+  assert.equal(needsYou([app, m("2", "U1", "<@ME> can you rebase?")], "ME", "channel"), "mentioned you");
+});

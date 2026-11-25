@@ -1,7 +1,7 @@
 import { startOfDay } from "../../core/time.ts";
 import type { Context } from "../../core/types.ts";
 import { countAlerts } from "./alerts.ts";
-import { conversationsFromConfig, cut, permalink } from "./normalise.ts";
+import { conversationsFromConfig, cut, isMuted, permalink } from "./normalise.ts";
 import type { SlackData, SlackMessage, SlackThread } from "./types.ts";
 
 // What a Slack sweep drops in `out/inbox/slack.json`. It is written by an LLM reading
@@ -21,7 +21,7 @@ import type { SlackData, SlackMessage, SlackThread } from "./types.ts";
 //             "fromApp": false,            // the first message was posted by an app
 //             "iPosted": false,            // I have a message in the thread
 //             "lastFromMe": false,         // the last message is mine
-//             "mentionsMe": false,         // a message after my last one mentions me
+//             "mentionsMe": false,         // a person's message after my last one mentions me
 //             "lastIsQuestion": false } ], // the last message ends with a question mark
 //         "alerts": [ { "ts": "…", "title": "the first line of the alert" } ] } ] }
 
@@ -66,7 +66,7 @@ export function fromInbox(dropped: unknown, ctx: Context): SlackData {
   if (!isObject(dropped)) throw new Error("slack inbox must be an object");
   if (!Array.isArray(dropped.conversations)) throw new Error("slack inbox: conversations must be a list");
 
-  const { workspaceUrl, alerts: patterns } = ctx.config.slack;
+  const { workspaceUrl, muteAuthors, alerts: patterns } = ctx.config.slack;
   const since = startOfDay(ctx.now(), ctx.config.me.timezone);
   const conversations = conversationsFromConfig(ctx.config);
   const followed = new Map(conversations.map((c) => [c.id, c]));
@@ -101,7 +101,7 @@ export function fromInbox(dropped: unknown, ctx: Context): SlackData {
       const messageCount = typeof t.messageCount === "number" && t.messageCount >= 1 ? Math.floor(t.messageCount) : 1;
       const lastFromMe = t.lastFromMe === true;
       const mentionsMe = t.mentionsMe === true && !lastFromMe;
-      if (t.fromApp === true && messageCount === 1 && !mentionsMe) continue; // a lone app post is noise
+      if (t.fromApp === true && messageCount === 1) continue; // a lone app post is noise, even when it names me
 
       const reason = mentionsMe
         ? "mentioned you"
@@ -110,13 +110,15 @@ export function fromInbox(dropped: unknown, ctx: Context): SlackData {
           : t.iPosted === true && !lastFromMe && t.lastIsQuestion === true
             ? "question in a thread you're in"
             : undefined;
+      const authors = Array.isArray(t.authors) ? t.authors.filter((a): a is string => typeof a === "string" && a !== "") : [];
+      if (isMuted(authors, muteAuthors) && !reason) continue;
       const summary = typeof t.summary === "string" ? t.summary.replace(/\s+/g, " ").trim() : "";
 
       threads.push({
         channelId: conversation.id,
         ts: t.ts,
         url: permalink(workspaceUrl, linkId, t.ts),
-        authors: Array.isArray(t.authors) ? t.authors.filter((a): a is string => typeof a === "string" && a !== "") : [],
+        authors,
         excerpt: cut(typeof t.excerpt === "string" ? t.excerpt.replace(/\s+/g, " ").trim() : "", EXCERPT_MAX),
         text: "",
         messageCount,

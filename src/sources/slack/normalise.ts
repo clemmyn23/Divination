@@ -50,6 +50,12 @@ export function toThread(conv: SlackConversation, messages: SlackMessage[], name
   };
 }
 
+/** True when everyone who wrote in the thread is on the mute list (names compare without case). */
+export function isMuted(authors: string[], muteAuthors: string[]): boolean {
+  const muted = new Set(muteAuthors.map((name) => name.toLowerCase()));
+  return authors.length > 0 && authors.every((name) => muted.has(name.toLowerCase()));
+}
+
 /** Every conversation named in `slack.groups`, in config order. One listed twice keeps its first group. */
 export function conversationsFromConfig(config: Config): SlackConversation[] {
   const seen = new Set<string>();

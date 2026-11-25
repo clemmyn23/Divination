@@ -47,3 +47,8 @@ test("firing rows come first, then the most frequent", () => {
     ["Triggered: Y", "Triggered: X", "report one"],
   );
 });
+
+test("emoji codes are dropped from a title, so the same alert counts together whatever its colour", () => {
+  assert.equal(alertTitle({ ts: "1", text: ":red_circle: TypeError in mapper" }), "TypeError in mapper");
+  assert.equal(alertTitle({ ts: "1", text: ":large_blue_circle: Failed at 10:30:45 :+1:" }), "Failed at 10:30:45");
+});

@@ -202,7 +202,7 @@ test("a direct message is one conversation: answering later clears it, and the n
   assert.equal(thread!.url, "https://w.slack.com/archives/D1/p1795561300000600");
 });
 
-test("a lone post by an app is left out; one with replies, or that names me, is kept", async () => {
+test("a lone post by an app is left out, even when it names me; one with replies is kept", async () => {
   const routes = slackRoutes();
   routes[`${API}conversations.history?channel=C1`] = {
     ok: true,
@@ -216,6 +216,13 @@ test("a lone post by an app is left out; one with replies, or that names me, is 
   const data = await collectSlack(contextWith(SLACK_LOCAL, { http: fakeHttp(routes), secrets: token }));
   assert.deepEqual(
     data.threads.filter((t) => t.channelId === "C1").map((t) => t.excerpt),
-    ["deploy failed", "assigned to @ME"],
+    ["deploy failed"],
   );
+});
+
+test("threads written only by muted authors are left out on the API path too", async () => {
+  const local = { ...SLACK_LOCAL, slack: { ...SLACK_LOCAL.slack, muteAuthors: ["Ana Lopez"] } };
+  const data = await collectSlack(contextWith(local, { http: fakeHttp(slackRoutes()), secrets: token }));
+  // "Staging is back." was written by Ana Lopez alone; the build thread has Sam in it too.
+  assert.deepEqual(data.threads.filter((t) => t.channelId === "C1").map((t) => t.messageCount), [3]);
 });

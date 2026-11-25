@@ -53,7 +53,7 @@ Each top-level message in the channel is one thread: that message plus its repli
 - `fromApp`: `true` when the first message's author id starts with `B`.
 - `iPosted`: `true` when any message in the thread is from `me.id`.
 - `lastFromMe`: `true` when the last message is from `me.id`.
-- `mentionsMe`: `true` when a message that comes after my last message (or any message, if I have none) contains `<@` followed by `me.id`.
+- `mentionsMe`: `true` when a message written by a person (not an app: an app's author id starts with `B`) that comes after my last message (or any such message, if I have none) contains `<@` followed by `me.id`.
 - `lastIsQuestion`: `true` when the last message's text ends with a question mark.
 
 ### `read: "dm"`

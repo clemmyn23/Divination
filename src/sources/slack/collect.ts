@@ -4,7 +4,7 @@ import { countAlerts } from "./alerts.ts";
 import { createSlack } from "./client.ts";
 import { dynamicConversations } from "./dynamic.ts";
 import { needsYou } from "./needs-you.ts";
-import { conversationsFromConfig, toThread } from "./normalise.ts";
+import { conversationsFromConfig, isMuted, toThread } from "./normalise.ts";
 import type { SlackConversation, SlackData, SlackMessage, SlackThread } from "./types.ts";
 
 const AT_ONCE = 4;
@@ -72,7 +72,7 @@ function dmThread(conversation: SlackConversation, messages: SlackMessage[], me:
  */
 export async function collectSlack(ctx: Context): Promise<SlackData> {
   const slack = createSlack(ctx);
-  const { windowHours, workspaceUrl, userId, dynamic, alerts: patterns } = ctx.config.slack;
+  const { windowHours, workspaceUrl, userId, dynamic, muteAuthors, alerts: patterns } = ctx.config.slack;
   const tz = ctx.config.me.timezone;
   const now = ctx.now();
   const configured = conversationsFromConfig(ctx.config);
@@ -116,10 +116,11 @@ export async function collectSlack(ctx: Context): Promise<SlackData> {
     for (const parent of parents) {
       const messages = replies.get(parent.ts) ?? [parent];
       const reason = needsYou(messages, userId, conversation.kind);
-      // A lone post by an app (a review request, a deploy notice) is noise unless it names me.
-      if (parent.bot_id && !parent.user && messages.length === 1 && !reason) continue;
+      // A lone post by an app (a review request, a deploy notice) is noise.
+      if (parent.bot_id && !parent.user && messages.length === 1) continue;
       await learn(messages);
       const thread = toThread(conversation, messages, names, workspaceUrl);
+      if (isMuted(thread.authors, muteAuthors) && !reason) continue;
       threads.push(reason ? { ...thread, needsYou: reason } : thread);
     }
   }
