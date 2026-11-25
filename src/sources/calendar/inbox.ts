@@ -78,7 +78,9 @@ export function fromInbox(dropped: unknown, ctx: Context): CalendarData {
     if (Number.isNaN(end)) throw new Error(`calendar inbox: events[${i}] has no readable end`);
 
     const calendar = plain(e.calendar);
-    return { start, end: Math.max(end, start), allDay, mine: calendar === "" || calendar === "primary", raw: e };
+    // A timed entry that runs for a day or more (a week-long roster) is background, not a meeting.
+    const wholeDay = allDay || end - start >= DAY;
+    return { start, end: Math.max(end, start), allDay: wholeDay, mine: calendar === "" || calendar === "primary", raw: e };
   });
 
   // My own calendar first: an event that is also on a team calendar is then kept as mine.

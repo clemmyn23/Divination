@@ -57,7 +57,8 @@ export function eventsForDay(raw: RawEvent[], dayStart: number, tz: string): { e
     if (!single && replaced.get(ev.uid)?.has(occurrence.start)) continue;
     if (isDropped(ev)) continue;
 
-    const allDay = ev.start.dateOnly;
+    // A timed event that runs for a day or more (a week on call) is background, not a meeting.
+    const allDay = ev.start.dateOnly || occurrence.end - occurrence.start >= 86_400_000;
     events.push({
       start: occurrence.start,
       end: occurrence.end,

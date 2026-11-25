@@ -206,3 +206,23 @@ test("with the inbox transport, doctor checks the dropped file instead of the ca
   assert.equal(bad[0]!.ok, false);
   assert.match(bad[0]!.detail, /events must be a list/);
 });
+
+test("a timed entry that runs for a day or more (a week-long roster) is treated as all-day", () => {
+  const data = fromInbox(
+    dropped([
+      { title: "Chris on roster", start: "2026-11-23T10:00:00+11:00", end: "2026-11-27T17:00:00+11:00", calendar: "Team" },
+      timed("Standup", "12:00", "12:15"),
+    ]),
+    ctx(),
+  );
+  assert.deepEqual(
+    data.events.map((e) => [e.title, e.allDay, e.optional, e.weight]),
+    [
+      ["Chris on roster", true, false, 1],
+      ["Standup", false, false, 1],
+    ],
+  );
+  const [panel] = calendar.panels(data, { ...view, config: ctx().config });
+  assert.ok(panel!.html.includes('<p class="all-day">All day: Chris on roster</p>'));
+  assert.equal(panel!.html.match(/<li/g)!.length, 1);
+});

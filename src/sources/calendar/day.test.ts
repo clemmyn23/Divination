@@ -170,3 +170,11 @@ test("my own blocks (focus time, away) are not meetings", () => {
   assert.equal(dayClass([focus, mins(900, 45)]), "normal");
   assert.equal(headline("normal", [focus, mins(900, 45)], "Clem", SYDNEY), "One meeting today, Clem, at 15:00.");
 });
+
+test("a timed event that runs for a day or more is treated as all-day", () => {
+  const raw = parseIcs(ics(["UID:a", "SUMMARY:On call", "DTSTART:20261122T230000Z", "DTEND:20261127T060000Z"]), "");
+  assert.deepEqual(
+    eventsForDay(raw, wed, SYDNEY).events.map((e) => [e.title, e.allDay, e.weight]),
+    [["On call", true, 1]],
+  );
+});
