@@ -57,6 +57,11 @@ function problemsIn(config: Config): string[] {
     }
   }
 
+  const hide: unknown = config.hideOlderThanDays;
+  if (typeof hide !== "number" || !Number.isFinite(hide) || hide < 0) {
+    problems.push(`hideOlderThanDays must be a number of days, 0 or more (got ${shown(hide)})`);
+  }
+
   for (const id of ["github", "slack", "calendar"] as const) {
     const transport = config[id]?.transport;
     if (!TRANSPORTS.includes(transport)) {

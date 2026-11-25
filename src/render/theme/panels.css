@@ -12,6 +12,7 @@
  *   p.quiet, p.empty    nothing to show
  *   p.headline, svg.terrain, ul.events   the calendar panel
  *   details.review > div.finding > pre   a drafted review, folded shut until opened
+ *   details.stale                        old things, folded shut (see src/render/old.ts)
  *
  * Keep items to a title line and one meta line. Space is tight on purpose.
  */
@@ -278,6 +279,34 @@
   display: block;
   font-size: 11px;
   color: var(--ink-soft);
+}
+
+/* Old things are folded away at the bottom of a panel until asked for. */
+
+.stale {
+  margin-top: 10px;
+  border-top: 1px dashed var(--line);
+}
+
+.stale > summary {
+  padding: 5px 0 3px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.stale > summary:hover {
+  color: var(--accent);
+}
+
+.stale[open] > summary {
+  margin-bottom: 2px;
+}
+
+.stale > .items,
+.stale > .attention {
+  opacity: 0.75;
 }
 
 /* Alerts. */

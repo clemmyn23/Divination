@@ -119,6 +119,45 @@ test("text from GitHub and from the model is escaped", () => {
   assert.ok(html.includes('data-copy="&quot;&gt;&lt;script&gt;alert(2)&lt;/script&gt;"'));
 });
 
+const DAY = 86_400_000;
+
+test("PRs older than the limit fold into one accordion at the end of the panel", () => {
+  const old = [
+    pr(5, "review_now", { createdAt: NOW - 46 * DAY }),
+    pr(6, "blocked", { createdAt: NOW - 100 * DAY, ci: "fail" }),
+  ];
+  const html = githubPanels({ login: "me", prs: [...DATA.prs, ...old] }, view)[0]!.html;
+
+  assert.ok(html.includes('<details class="stale">'));
+  assert.ok(html.includes("<summary>Expand for stale tasks · 2</summary>"));
+  // The headings above only count what is shown.
+  assert.ok(html.includes('<h3 class="group">Needs you · 2</h3>'));
+  assert.ok(html.includes('<h3 class="group">Waiting on authors · 1</h3>'));
+
+  const [shown, folded] = html.split('<details class="stale">');
+  assert.ok(!shown!.includes("Change 5") && !shown!.includes("Change 6"));
+  assert.ok(folded!.includes("Change 5") && folded!.includes("Change 6"));
+  assert.ok(folded!.trimEnd().endsWith("</details>"));
+  // A stale PR that needs you can still be drafted from inside the accordion.
+  assert.ok(folded!.includes('data-enrich="pr-review" data-key="o/r#5@sha5"'));
+});
+
+test("exactly at the limit is not stale, and a limit of 0 never folds", () => {
+  const edge = pr(5, "review_now", { createdAt: NOW - 45 * DAY });
+  assert.ok(!githubPanels({ login: "me", prs: [edge] }, view)[0]!.html.includes("<details class=\"stale\">"));
+
+  const ancient = pr(6, "review_now", { createdAt: NOW - 900 * DAY });
+  const never = { ...view, config: { ...view.config, hideOlderThanDays: 0 } };
+  assert.ok(!githubPanels({ login: "me", prs: [ancient] }, never)[0]!.html.includes("<details class=\"stale\">"));
+});
+
+test("a queue with only stale PRs shows just the accordion", () => {
+  const html = githubPanels({ login: "me", prs: [pr(5, "review_now", { createdAt: NOW - 60 * DAY })] }, view)[0]!.html;
+  assert.ok(!html.includes("<h3 class=\"group\">Needs you · 0"));
+  assert.ok(!html.includes("No reviews waiting"));
+  assert.ok(html.startsWith("<details class=\"stale\">"));
+});
+
 test("an empty queue says so", () => {
   assert.ok(githubPanels({ login: "me", prs: [] }, view)[0]!.html.includes("No reviews waiting"));
 });
@@ -126,8 +165,8 @@ test("an empty queue says so", () => {
 test("PRs that need you become needs-you items with their reasons", () => {
   const items = github.attention(DATA, view);
   assert.deepEqual(items, [
-    { key: "o/r#1", title: "Change 1", reason: "touches billing, rotation, CI passing", url: "https://git.example.com/o/r/pull/1" },
-    { key: "o/r#2", title: "Change 2", reason: "quick win, CI passing", url: "https://git.example.com/o/r/pull/2" },
+    { key: "o/r#1", title: "Change 1", reason: "touches billing, rotation, CI passing", url: "https://git.example.com/o/r/pull/1", at: NOW - 86_400_000 },
+    { key: "o/r#2", title: "Change 2", reason: "quick win, CI passing", url: "https://git.example.com/o/r/pull/2", at: NOW - 86_400_000 },
   ]);
   assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs"]);
 });

@@ -52,7 +52,7 @@ export const github: Source<GithubData> = {
   attention: (data) =>
     data.prs
       .filter((pr) => NEEDS_YOU.includes(pr.rank.bucket))
-      .map((pr) => ({ key: pr.key, title: pr.title, reason: pr.rank.reasons.join(", "), url: pr.url })),
+      .map((pr) => ({ key: pr.key, title: pr.title, reason: pr.rank.reasons.join(", "), url: pr.url, at: pr.createdAt })),
   panels: githubPanels,
   enrichers: [prReview],
 };

@@ -25,6 +25,8 @@ export interface Config {
   sources: string[];
   tick: { minutes: number; days: number[]; start: string; end: string };
   staleAfterMinutes: number;
+  /** PRs and other waiting things older than this are folded into "stale tasks". 0 never folds. */
+  hideOlderThanDays: number;
   enrich: { maxBudgetUsd: number };
   server: { port: number };
   github: {
@@ -94,6 +96,8 @@ export interface AttentionItem {
   title: string;
   reason: string;
   url?: string;
+  /** When this started waiting, in epoch ms. Old items are folded away; undated ones never are. */
+  at?: number;
 }
 
 export interface Panel {

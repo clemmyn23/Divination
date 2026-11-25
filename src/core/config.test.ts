@@ -14,6 +14,13 @@ test("config works with no local file", () => {
   assert.equal(loadConfig(tempRoot()).staleAfterMinutes, 60);
 });
 
+test("things older than 45 days are hidden by default, and the limit can be changed or switched off", () => {
+  assert.equal(loadConfig(tempRoot()).hideOlderThanDays, 45);
+  assert.equal(loadConfig(tempRoot({ hideOlderThanDays: 0 })).hideOlderThanDays, 0);
+  assert.throws(() => loadConfig(tempRoot({ hideOlderThanDays: -1 })), /hideOlderThanDays/);
+  assert.throws(() => loadConfig(tempRoot({ hideOlderThanDays: "45" })), /hideOlderThanDays/);
+});
+
 test("config problems are all listed", () => {
   const root = tempRoot({
     tick: { start: "8am" },

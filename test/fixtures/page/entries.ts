@@ -52,6 +52,7 @@ function pr(
   bucket: Bucket,
   reasons: string[],
   score = 0,
+  ageDays = 2,
 ): PullRequest {
   return {
     key: `o/app#${number}`,
@@ -61,7 +62,7 @@ function pr(
     url: `https://git.example.com/o/app/pull/${number}`,
     author,
     headSha: `sha${number}`,
-    createdAt: 0,
+    createdAt: -ageDays * 86_400_000, // shifted to "now" by queueAt()
     updatedAt: 0,
     draft: bucket === "excluded" && reasons[0] === "draft",
     additions: size[0],
@@ -90,8 +91,15 @@ const queue: GithubData = {
     pr(416, "Bump the linter and fix new warnings", "bot", [310, 300], "pass", "team", "skip", ["not for this crew (:octagonal_sign:)", "CI passing"], 1),
     pr(419, "Rename the feature flag helper", "kit", [58, 58], "pass", "team", "excluded", ["already reviewed", "CI passing"], 1),
     pr(420, "New onboarding checklist", "ana", [900, 20], "pending", "direct", "excluded", ["draft", "large change"], 2),
+    pr(288, "Replace the build tool with workspaces", "kit", [308, 2674], "fail", "rotation", "blocked", ["CI failing", "large change", "rotation", "144 days old"], 5, 144),
+    pr(301, "Integrate the segment mapper with the checklist", "jo", [273, 72], "pass", "rotation", "review_now", ["rotation", "285 days old", "CI passing"], 4, 285),
   ],
 };
+
+/** The sample queue with its dates set relative to `now`. */
+function queueAt(now: number): GithubData {
+  return { ...queue, prs: queue.prs.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now })) };
+}
 
 /** Enrichment already in the cache for the sample page: one drafted review. */
 export function fixtureEnrich(): Record<string, Record<string, unknown>> {
@@ -187,7 +195,7 @@ export function fixtureEntries(now: number): Entry[] {
   const minute = 60_000;
   return [
     { source: standIn("calendar", "Today", [today]), envelope: envelope("calendar", now - 4 * minute) },
-    { source: github, envelope: { ...envelope("github", now - 4 * minute), data: queue } },
+    { source: github, envelope: { ...envelope("github", now - 4 * minute), data: queueAt(now) } },
     {
       source: standIn("slack", "Slack", [slack], () => [
         { key: "C1:1", title: "#team-dev", reason: "mentioned you", url: "https://example.slack.com/archives/C1/p1" },

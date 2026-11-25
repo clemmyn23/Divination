@@ -5,6 +5,7 @@ import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
 import { esc, link } from "./html.ts";
 import { mascotSvg } from "./mascot.ts";
+import { isOld, staleAccordion } from "./old.ts";
 
 export interface PageEntry {
   source: Source<any>;
@@ -57,13 +58,20 @@ function sectionsFor(entry: PageEntry, view: View): string[] {
   return source.panels(envelope.data, view).map((panel) => section(panel, entry, view));
 }
 
-/** Everything that is waiting on you, from every source, as the first panel on the page. */
-function attentionPanel(items: AttentionItem[]): string {
+function attentionList(items: AttentionItem[]): string {
   const rows = items
     .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${esc(it.reason)}</span></li>`)
     .join("\n");
-  const body =
-    items.length === 0 ? '<p class="quiet">Nothing needs you. Enjoy the calm.</p>' : `<ol class="attention">\n${rows}\n</ol>`;
+  return `<ol class="attention">\n${rows}\n</ol>`;
+}
+
+/**
+ * Everything that is waiting on you, from every source, as the first panel on the page.
+ * Old items are folded into an accordion below the list and are not counted.
+ */
+function attentionPanel(items: AttentionItem[], stale: AttentionItem[]): string {
+  const list = items.length === 0 ? '<p class="quiet">Nothing needs you. Enjoy the calm.</p>' : attentionList(items);
+  const body = stale.length === 0 ? list : `${list}\n${staleAccordion(stale.length, attentionList(stale))}`;
   return `<aside id="attention" class="panel tint-accent" data-size="short">
 <div class="panel-head">
 <h2>Needs you</h2>
@@ -98,9 +106,12 @@ ${mascotSvg(count)}
 export function renderPage(input: { view: View; entries: PageEntry[] }): string {
   const { view, entries } = input;
 
-  const attention = entries.flatMap(({ source, envelope }) =>
+  const waiting = entries.flatMap(({ source, envelope }) =>
     envelope.data === null ? [] : source.attention(envelope.data, view),
   );
+  // Only what is shown is counted; old items wait in the accordion.
+  const attention = waiting.filter((it) => !isOld(it.at, view));
+  const stale = waiting.filter((it) => isOld(it.at, view));
   const sections = entries.flatMap((entry) => sectionsFor(entry, view));
 
   return `<!doctype html>
@@ -132,7 +143,7 @@ ${readFileSync(clientScript, "utf8")}
 ${needsYouBadge(attention.length)}
 </header>
 <main>
-${attentionPanel(attention)}
+${attentionPanel(attention, stale)}
 ${sections.join("\n")}
 </main>
 </body>

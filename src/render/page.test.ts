@@ -152,6 +152,40 @@ test("the needs-you list is its own short panel, not part of the header", () => 
   assert.ok(html.indexOf('<aside id="attention"') < html.indexOf("<section"));
 });
 
+test("needs-you items older than the limit are folded away and not counted", () => {
+  const DAY = 86_400_000;
+  const src = fakeSource({
+    attention: () => [
+      { key: "1", title: "Fresh one", reason: "r", at: NOW - 2 * DAY },
+      { key: "2", title: "Old one", reason: "r", at: NOW - 46 * DAY },
+      { key: "3", title: "Ancient one", reason: "r", at: NOW - 300 * DAY },
+      { key: "4", title: "Undated one", reason: "r" },
+    ],
+  });
+  const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
+
+  // Only what is shown counts: in the header, on the mascot and on the panel.
+  assert.ok(html.includes('id="needs-you" data-count="2"'));
+  assert.ok(html.includes('class="mascot mascot-awake"'));
+  const aside = html.match(/<aside id="attention"[\s\S]*?<\/aside>/)![0];
+  assert.ok(aside.includes('<p class="updated">2</p>'));
+
+  const [shown, folded] = aside.split('<details class="stale">');
+  assert.ok(shown!.includes("Fresh one") && shown!.includes("Undated one"));
+  assert.ok(!shown!.includes("Old one") && !shown!.includes("Ancient one"));
+  assert.ok(folded!.includes("<summary>Expand for stale tasks · 2</summary>"));
+  assert.ok(folded!.includes("Old one") && folded!.includes("Ancient one"));
+});
+
+test("when everything waiting is stale the panel stays calm but still offers the accordion", () => {
+  const src = fakeSource({ attention: () => [{ key: "1", title: "Old one", reason: "r", at: NOW - 90 * 86_400_000 }] });
+  const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
+  assert.ok(html.includes('id="needs-you" data-count="0"'));
+  const aside = html.match(/<aside id="attention"[\s\S]*?<\/aside>/)![0];
+  assert.ok(aside.includes("Nothing needs you"));
+  assert.ok(aside.includes("<summary>Expand for stale tasks · 1</summary>"));
+});
+
 test("with nothing to do the needs-you panel says so", () => {
   const html = renderPage({ view, entries: [] });
   const aside = html.match(/<aside id="attention"[\s\S]*?<\/aside>/)![0];

@@ -1,5 +1,6 @@
 import type { Panel, View } from "../../core/types.ts";
 import { esc, link } from "../../render/html.ts";
+import { isOld, staleAccordion } from "../../render/old.ts";
 import type { Bucket, Ci, GithubData, PullRequest } from "./types.ts";
 
 /** The buckets that count as waiting on me. */
@@ -85,16 +86,26 @@ function item(pr: PullRequest, view: View): string {
 ${meta(pr)}${extra}</li>`;
 }
 
-/** The review queue: PRs grouped by what to do with them, one title and one meta line each. */
+/**
+ * The review queue: PRs grouped by what to do with them, one title and one meta line each.
+ * PRs opened longer ago than `hideOlderThanDays` are folded into one accordion at the end.
+ */
 export function githubPanels(data: GithubData, view: View): Panel[] {
+  const stale = data.prs.filter((pr) => isOld(pr.createdAt, view));
+  const fresh = data.prs.filter((pr) => !isOld(pr.createdAt, view));
+
   const groups = GROUPS.map(({ title, buckets }) => {
-    const prs = data.prs.filter((pr) => buckets.includes(pr.rank.bucket));
+    const prs = fresh.filter((pr) => buckets.includes(pr.rank.bucket));
     if (prs.length === 0) return "";
     return `<h3 class="group">${title} · ${prs.length}</h3>
 <ul class="items">
 ${prs.map((pr) => item(pr, view)).join("\n")}
 </ul>`;
   }).filter((html) => html !== "");
+
+  if (stale.length > 0) {
+    groups.push(staleAccordion(stale.length, `<ul class="items">\n${stale.map((pr) => item(pr, view)).join("\n")}\n</ul>`));
+  }
 
   const html = groups.length > 0 ? groups.join("\n") : '<p class="quiet">No reviews waiting.</p>';
   return [{ id: "prs", title: "Review queue", tint: "blush", html }];
