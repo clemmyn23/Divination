@@ -34,6 +34,8 @@ const TOOL_DETAIL_MAX = 200;
 /** The last line the CLI writes: how the run went and what it answered. */
 interface CliOutput {
   type?: string;
+  /** How the run ended: `success`, or a reason such as `error_max_budget_usd`. */
+  subtype?: unknown;
   is_error?: boolean;
   result?: unknown;
   structured_output?: unknown;
@@ -41,11 +43,19 @@ interface CliOutput {
   num_turns?: number;
   /** Tool calls the run tried and was refused. */
   permission_denials?: { tool_name?: unknown }[];
+  /** Tokens over the whole run. Most of what is read usually comes from the cache. */
+  usage?: { input_tokens?: unknown; cache_creation_input_tokens?: unknown; cache_read_input_tokens?: unknown; output_tokens?: unknown };
 }
 
 /** One line of the CLI's `stream-json` output. Only the parts read here are named. */
 interface CliEvent {
   type?: string;
+  subtype?: string;
+  /** On the first line (`system`, `init`): everything the run started with. */
+  tools?: unknown;
+  mcp_servers?: unknown;
+  skills?: unknown;
+  plugins?: unknown;
   /** Set on a message the CLI wrote itself to report an API error. */
   is_api_error_message?: boolean;
   message?: { content?: { type?: string; text?: string; name?: string; input?: unknown }[] };
@@ -70,7 +80,21 @@ function watchStream(log: Context["log"]): (chunk: string) => void {
   let buffer = "";
   let midText = false; // some of the current message's text has already been reported, piece by piece
 
+  const count = (list: unknown) => (Array.isArray(list) ? list.length : 0);
+  /** The names in a list whose entries are names or objects with one. */
+  const names = (list: unknown) =>
+    (Array.isArray(list) ? list : [])
+      .map((entry) => (typeof entry === "string" ? entry : (entry as { name?: unknown } | null)?.name))
+      .filter((name): name is string => typeof name === "string");
+
   const onEvent = (event: CliEvent) => {
+    if (event.type === "system") {
+      // Counts only, and the servers by name: a plugin's entry carries paths on this machine.
+      if (event.subtype === "init") {
+        log("llm-loaded", { tools: count(event.tools), servers: names(event.mcp_servers), skills: count(event.skills), plugins: count(event.plugins) });
+      }
+      return;
+    }
     if (event.type === "stream_event") {
       const delta = event.event?.delta;
       if (event.event?.type === "content_block_delta" && delta?.type === "text_delta" && delta.text) {
@@ -118,6 +142,21 @@ function parseJson(text: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Why a run failed, in the most useful words there are: the CLI's own, else that it ran
+ * into the spending limit, else its reason code, else what it wrote as an error.
+ */
+function whyItFailed(out: CliOutput | undefined, res: { code: number; stderr: string }, budgetUsd: number): string {
+  if (typeof out?.result === "string" && out.result !== "") return out.result;
+  // A run that reaches the limit is stopped with no answer and no words of its own.
+  const spent = typeof out?.total_cost_usd === "number" ? out.total_cost_usd : 0;
+  if (out?.subtype === "error_max_budget_usd" || (out !== undefined && spent >= budgetUsd)) {
+    return `stopped at the $${budgetUsd.toFixed(2)} spending limit for one call (enrich.maxBudgetUsd)`;
+  }
+  if (typeof out?.subtype === "string" && out.subtype !== "" && out.subtype !== "success") return out.subtype;
+  return res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output had no result");
 }
 
 /** JSON from a model's text answer, which may be wrapped in a code fence. */
@@ -171,8 +210,16 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
   const usage = () => ({
     ...(typeof out?.total_cost_usd === "number" ? { costUsd: out.total_cost_usd } : {}),
     ...(typeof out?.num_turns === "number" ? { turns: out.num_turns } : {}),
+    ...(tokens() ? { tokens: tokens() } : {}),
     ...(denied().length > 0 ? { denied: denied() } : {}),
   });
+  /** What the run read and wrote, in tokens, when the CLI says. */
+  const tokens = () => {
+    const u = out?.usage;
+    if (typeof u !== "object" || u === null) return undefined;
+    const n = (v: unknown) => (typeof v === "number" ? v : 0);
+    return { in: n(u.input_tokens), cacheWrite: n(u.cache_creation_input_tokens), cacheRead: n(u.cache_read_input_tokens), out: n(u.output_tokens) };
+  };
   /** Each tool the run was refused, once. A name here that the prompt needs means `allowedTools` is wrong. */
   const denied = () => [
     ...new Set((Array.isArray(out?.permission_denials) ? out.permission_denials : []).map((d) => d?.tool_name).filter((name): name is string => typeof name === "string")),
@@ -190,11 +237,7 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
 
     out = resultOf(res.stdout);
     if (res.code !== 0 || out === undefined || out.is_error === true) {
-      const why =
-        typeof out?.result === "string" && out.result !== ""
-          ? out.result
-          : res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output had no result");
-      throw new Error(`claude failed: ${why}`);
+      throw new Error(`claude failed: ${whyItFailed(out, res, ctx.config.enrich.maxBudgetUsd)}`);
     }
 
     let answer: unknown;

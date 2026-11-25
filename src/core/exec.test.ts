@@ -28,6 +28,12 @@ test("a missing program resolves with exit code 127", async () => {
   assert.match(res.stderr, /ENOENT/);
 });
 
+test("a program that exits with an error code and writes nothing has no error output, and its command line is not put there", async () => {
+  const res = await realExec(node, ["-e", "process.exit(3)", "a-private-argument"]);
+  assert.equal(res.code, 3);
+  assert.equal(res.stderr, "");
+});
+
 test("a program that runs past its timeout resolves with exit code 124", async () => {
   const res = await realExec(node, ["-e", "setTimeout(() => {}, 10000)"], { timeoutMs: 200 });
   assert.equal(res.code, 124);

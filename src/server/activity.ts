@@ -46,6 +46,19 @@ function seconds(ms: unknown): string {
 }
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+/** A token count in few characters: 431200 is "431k". */
+const thousands = (n: number) => (n >= 1000 ? `${Math.round(n / 1000)}k` : String(n));
+
+/** "431k tokens in (400k cached), 950 out", from the counts a Claude run reports. Nothing when it reported none. */
+function tokensPart(tokens: unknown): string[] {
+  if (typeof tokens !== "object" || tokens === null) return [];
+  const t = tokens as Record<string, unknown>;
+  const n = (key: string) => (typeof t[key] === "number" ? (t[key] as number) : 0);
+  const read = n("in") + n("cacheWrite") + n("cacheRead");
+  const cached = n("cacheRead") > 0 ? ` (${thousands(n("cacheRead"))} cached)` : "";
+  return [`${thousands(read)} tokens in${cached}, ${thousands(n("out"))} out`];
+}
 const indent = (text: string) => text.split("\n").map((line) => `  ${line}`).join("\n");
 
 export function createActivity(now: () => number, initial: SourceState[]) {
@@ -180,6 +193,17 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           break;
         }
 
+        // What the run carried before its first word: this is what every turn pays for again.
+        case "llm-loaded": {
+          const servers = Array.isArray(f.servers) ? f.servers.map(String) : [];
+          const named = servers.length > 0 ? ` (${servers.join(", ")})` : "";
+          say(
+            `Claude loaded ${plural(Number(f.tools ?? 0), "tool")}, ${plural(servers.length, "MCP server")}${named}, ` +
+              `${plural(Number(f.skills ?? 0), "skill")}, ${plural(Number(f.plugins ?? 0), "plugin")}`,
+          );
+          break;
+        }
+
         case "llm-tool": {
           const detail = typeof f.detail === "string" && f.detail !== "" ? `: ${f.detail}` : "";
           say(`Claude is using ${String(f.name)}${detail}`);
@@ -192,6 +216,7 @@ export function createActivity(now: () => number, initial: SourceState[]) {
             `Claude (${String(f.model)}) ${ok ? "finished" : "failed"} in ${seconds(f.ms)}`,
             ...(typeof f.costUsd === "number" ? [`$${f.costUsd.toFixed(2)}`] : []),
             ...(typeof f.turns === "number" ? [plural(f.turns, "turn")] : []),
+            ...tokensPart(f.tokens),
             ...(Array.isArray(f.denied) && f.denied.length > 0 ? [`refused: ${f.denied.join(", ")}`] : []),
           ];
           const detail = ok ? f.output : f.error;

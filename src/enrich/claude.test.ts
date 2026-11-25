@@ -56,6 +56,24 @@ test("an expired login is reported in the CLI's own words", async () => {
   await assert.rejects(runClaude(withClaude(fixture("claude-auth-failure.json"), 1).ctx, req), /Failed to authenticate/);
 });
 
+test("a run stopped at its spending limit says so and names the setting", async () => {
+  // The shape seen from real runs: exit code 1, a result line with no text, the cost just past the limit.
+  const stopped = JSON.stringify({ type: "result", subtype: "error_max_budget_usd", is_error: true, total_cost_usd: 0.5072767, num_turns: 15 });
+  const exec = fakeExec({ "claude -p": { stdout: stopped, code: 1 } });
+  const ctx = contextWith({ enrich: { maxBudgetUsd: 0.5 } }, { exec });
+  await assert.rejects(runClaude(ctx, req), { message: "claude failed: stopped at the $0.50 spending limit for one call (enrich.maxBudgetUsd)" });
+
+  // Without the CLI naming the reason, a cost at or past the limit and no answer says the same.
+  const unnamed = JSON.stringify({ type: "result", is_error: true, total_cost_usd: 0.5, num_turns: 9 });
+  const ctx2 = contextWith({ enrich: { maxBudgetUsd: 0.5 } }, { exec: fakeExec({ "claude -p": { stdout: unnamed, code: 1 } }) });
+  await assert.rejects(runClaude(ctx2, req), /stopped at the \$0\.50 spending limit/);
+});
+
+test("a failure the CLI gives a reason code for, and no words, is reported by that code", async () => {
+  const stopped = JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, total_cost_usd: 0.01, num_turns: 40 });
+  await assert.rejects(runClaude(withClaude(stopped, 1).ctx, req), { message: "claude failed: error_max_turns" });
+});
+
 test("a timeout says so", async () => {
   await assert.rejects(runClaude(withClaude("", 124).ctx, req), /timed out/);
 });
@@ -207,6 +225,39 @@ test("tools the run was refused are named in the log, so a wrong tool name in co
   const { ctx, logged } = watched({ stdout });
   await runClaude(ctx, req);
   assert.deepEqual(logged.find(([event]) => event === "llm")![1].denied, ["mcp__claude_ai_Slack__slack_send_message", "Bash"]);
+});
+
+test("the tokens a run used are logged, on a failure too", async () => {
+  const usage = { input_tokens: 1200, cache_creation_input_tokens: 30_000, cache_read_input_tokens: 400_000, output_tokens: 950 };
+  const ok = watched({ stdout: events(INIT, { ...RESULT, usage }) });
+  await runClaude(ok.ctx, req);
+  assert.deepEqual(ok.logged.find(([event]) => event === "llm")![1].tokens, { in: 1200, cacheWrite: 30_000, cacheRead: 400_000, out: 950 });
+
+  const stopped = watched({ stdout: events(INIT, { type: "result", subtype: "error_max_budget_usd", is_error: true, total_cost_usd: 9, usage }), code: 1 });
+  await assert.rejects(runClaude(stopped.ctx, req));
+  assert.deepEqual(stopped.logged.find(([event]) => event === "llm")![1].tokens, { in: 1200, cacheWrite: 30_000, cacheRead: 400_000, out: 950 });
+
+  const none = watched({ stdout: events(INIT, RESULT) });
+  await runClaude(none.ctx, req);
+  assert.ok(!("tokens" in none.logged.find(([event]) => event === "llm")![1]));
+});
+
+test("what a run loaded before it began is logged as counts, with the MCP servers by name", async () => {
+  const init = {
+    ...INIT,
+    tools: ["mcp__claude_ai_Slack__slack_read_channel", "mcp__claude_ai_Slack__slack_read_thread", "mcp__playwright__browser_click"],
+    mcp_servers: [{ name: "claude.ai Slack", status: "connected" }, { name: "playwright", status: "connected" }],
+    skills: ["review-queue", "start-coding"],
+    plugins: [{ name: "figma", path: "/somewhere/private" }],
+  };
+  const { ctx, logged } = watched({ stdout: events(init, RESULT) });
+  await runClaude(ctx, req);
+  assert.deepEqual(logged.find(([event]) => event === "llm-loaded")![1], { tools: 3, servers: ["claude.ai Slack", "playwright"], skills: 2, plugins: 1 });
+
+  // The start-up line of a run that names nothing still counts as nothing loaded.
+  const bare = watched({ stdout: events(INIT, RESULT) });
+  await runClaude(bare.ctx, req);
+  assert.deepEqual(bare.logged.find(([event]) => event === "llm-loaded")![1], { tools: 0, servers: [], skills: 0, plugins: 0 });
 });
 
 // Doctor: can Refresh now's Claude reads run at all

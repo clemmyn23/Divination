@@ -26,7 +26,9 @@ export const realExec: Exec = (cmd, args, opts = {}) =>
           return;
         }
         const code = typeof error.code === "number" ? error.code : error.killed ? TIMED_OUT : COULD_NOT_START;
-        resolve({ code, stdout, stderr: stderr || error.message });
+        // Node's own message for a failed run is the whole command line, arguments and all:
+        // that is never error output. Only a program that could not start has words worth keeping.
+        resolve({ code, stdout, stderr: stderr || (code === COULD_NOT_START ? error.message : "") });
       },
     );
     if (opts.onStdout) child.stdout?.on("data", opts.onStdout);

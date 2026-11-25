@@ -227,3 +227,17 @@ test("tools a Claude run was refused are named on its closing line", () => {
   a.record("llm", { ok: true, ms: 1000, model: "haiku", turns: 2, denied: ["Bash", "mcp__x__send"] });
   assert.equal(a.lines()[0]!.text, "Claude (haiku) finished in 1 s · 2 turns · refused: Bash, mcp__x__send");
 });
+
+test("the tokens a Claude run read and wrote are on its closing line, with how much came from the cache", () => {
+  const { a } = activity();
+  a.record("llm", { ok: false, ms: 31_000, model: "haiku", costUsd: 0.51, turns: 14, tokens: { in: 1200, cacheWrite: 30_000, cacheRead: 400_000, out: 950 }, error: "claude failed: stopped" });
+  assert.equal(a.lines()[0]!.text, "Claude (haiku) failed in 31 s · $0.51 · 14 turns · 431k tokens in (400k cached), 950 out\n  claude failed: stopped");
+});
+
+test("what a Claude run loaded before it began is one line of counts", () => {
+  const { a } = activity();
+  a.record("llm-loaded", { tools: 312, servers: ["claude.ai Slack", "playwright"], skills: 56, plugins: 8 });
+  a.record("llm-loaded", { tools: 2, servers: [], skills: 0, plugins: 0 });
+  assert.equal(a.lines()[0]!.text, "Claude loaded 312 tools, 2 MCP servers (claude.ai Slack, playwright), 56 skills, 8 plugins");
+  assert.equal(a.lines()[1]!.text, "Claude loaded 2 tools, 0 MCP servers, 0 skills, 0 plugins");
+});
