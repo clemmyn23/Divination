@@ -271,3 +271,18 @@ test("a source fed by hand through its inbox stays fresh for longer", () => {
   const yesterday = renderPage({ view: byHand, entries: [{ source: fakeSource({ panels: () => [panel()] }), envelope: ok({}, NOW - 13 * 3_600_000) }] });
   assert.ok(yesterday.includes('data-stale="true"'));
 });
+
+test("a needs-you item that is marked done is neither listed nor counted; the rest carry a tick", () => {
+  const source = fakeSource({
+    attention: () => [
+      { key: "1", title: "First", reason: "because", doneKey: "k:1" },
+      { key: "2", title: "Second", reason: "because", doneKey: "k:2" },
+      { key: "3", title: "Third", reason: "because" }, // cannot be ticked
+    ],
+  });
+  const html = renderPage({ view: { ...view, done: { "k:1": NOW } }, entries: [{ source, envelope: ok({}) }] });
+  assert.ok(html.includes('id="needs-you" data-count="2"'));
+  assert.ok(!html.includes("First"));
+  assert.ok(html.includes('<li>Second <span class="reason">because</span><button type="button" class="tick" data-done="k:2" data-state="open"'));
+  assert.ok(html.includes('<li>Third <span class="reason">because</span></li>'));
+});

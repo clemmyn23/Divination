@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { transportOf } from "../core/pipeline.ts";
 import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
+import { isDone, tick } from "./done.ts";
 import { faviconHref } from "./favicon.ts";
 import { esc, link } from "./html.ts";
 import { mascotSvg } from "./mascot.ts";
@@ -65,7 +66,7 @@ function sectionsFor(entry: PageEntry, view: View): string[] {
 
 function attentionList(items: AttentionItem[]): string {
   const rows = items
-    .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${esc(it.reason)}</span></li>`)
+    .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${esc(it.reason)}</span>${it.doneKey ? tick(it.doneKey, false) : ""}</li>`)
     .join("\n");
   return `<ol class="attention">\n${rows}\n</ol>`;
 }
@@ -111,9 +112,10 @@ ${mascotSvg(count)}
 export function renderPage(input: { view: View; entries: PageEntry[] }): string {
   const { view, entries } = input;
 
-  const waiting = entries.flatMap(({ source, envelope }) =>
-    envelope.data === null ? [] : source.attention(envelope.data, view),
-  );
+  // What I have ticked off by hand no longer waits on me.
+  const waiting = entries
+    .flatMap(({ source, envelope }) => (envelope.data === null ? [] : source.attention(envelope.data, view)))
+    .filter((it) => !isDone(it.doneKey, view));
   // Only what is shown is counted; old items wait in the accordion.
   const attention = waiting.filter((it) => !isOld(it.at, view));
   const stale = waiting.filter((it) => isOld(it.at, view));

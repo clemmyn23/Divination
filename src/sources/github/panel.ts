@@ -1,4 +1,5 @@
 import type { Panel, View } from "../../core/types.ts";
+import { doneAccordion, isDone, tick } from "../../render/done.ts";
 import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import type { Bucket, Ci, GithubData, PullRequest } from "./types.ts";
@@ -39,6 +40,9 @@ function asReview(value: unknown): Review | undefined {
   if (typeof v.verdict !== "string" || typeof v.summary !== "string" || !Array.isArray(v.findings)) return undefined;
   return v as Review;
 }
+
+/** The key that marks a PR done. It includes the head commit, so new commits bring the PR back. */
+export const prDoneKey = (pr: PullRequest) => `pr:${pr.key}@${pr.headSha}`;
 
 export function reviewKey(pr: PullRequest): string {
   return `${pr.key}@${pr.headSha}`;
@@ -86,17 +90,21 @@ function item(pr: PullRequest, view: View): string {
       ? `\n${reviewHtml(review)}`
       : `\n<button data-enrich="pr-review" data-key="${esc(reviewKey(pr))}">Draft review</button>`;
   }
+  const key = prDoneKey(pr);
   return `<li class="item pr${needsYou ? " needs-you" : ""}">${link(pr.title, pr.url)}
-${meta(pr)}${extra}</li>`;
+${meta(pr)}${extra}${tick(key, isDone(key, view))}</li>`;
 }
 
 /**
  * The review queue: PRs grouped by what to do with them, one title and one meta line each.
- * PRs opened longer ago than `hideOlderThanDays` are folded into one accordion at the end.
+ * PRs opened longer ago than `hideOlderThanDays` are folded into one accordion at the end,
+ * and PRs ticked off by hand into another.
  */
 export function githubPanels(data: GithubData, view: View): Panel[] {
-  const stale = data.prs.filter((pr) => isOld(pr.createdAt, view));
-  const fresh = data.prs.filter((pr) => !isOld(pr.createdAt, view));
+  const done = data.prs.filter((pr) => isDone(prDoneKey(pr), view));
+  const open = data.prs.filter((pr) => !isDone(prDoneKey(pr), view));
+  const stale = open.filter((pr) => isOld(pr.createdAt, view));
+  const fresh = open.filter((pr) => !isOld(pr.createdAt, view));
 
   const groups = GROUPS.map(({ title, buckets }) => {
     const prs = fresh.filter((pr) => buckets.includes(pr.rank.bucket));
@@ -109,6 +117,10 @@ ${prs.map((pr) => item(pr, view)).join("\n")}
 
   if (stale.length > 0) {
     groups.push(staleAccordion(stale.length, `<ul class="items">\n${stale.map((pr) => item(pr, view)).join("\n")}\n</ul>`));
+  }
+
+  if (done.length > 0) {
+    groups.push(doneAccordion(done.length, `<ul class="items">\n${done.map((pr) => item(pr, view)).join("\n")}\n</ul>`));
   }
 
   const html = groups.length > 0 ? groups.join("\n") : '<p class="quiet">No reviews waiting.</p>';

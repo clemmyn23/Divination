@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { beforeEach, test } from "node:test";
 import { contextWith, fakeExec, fakeTimers, settle, sourceWith } from "../../test/helpers.ts";
 import type { Context, EnrichItem, Enricher } from "../core/types.ts";
+import { readDone } from "../core/done.ts";
 import { createApp } from "./server.ts";
 
 type App = ReturnType<typeof createApp>;
@@ -148,4 +149,29 @@ test("nothing the server does by itself calls the LLM", async () => {
   await settle();
   assert.equal(runs.length, 0);
   assert.ok(!exec.calls.some((call) => call[0] === "claude"));
+});
+
+// Marking lines as done
+
+test("marking a line done remembers it, redraws the page, and can be undone", async () => {
+  const before = (await json(req("GET", "/api/status"))).body.renderedAt;
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  const marked = await json(req("POST", "/api/done", { body: JSON.stringify({ key: "pr:o/r#1@abc", done: true }) }));
+  assert.equal(marked.status, 200);
+  assert.ok(marked.body.renderedAt > before); // open pages reload themselves
+  assert.deepEqual(Object.keys(readDone(ctx)), ["pr:o/r#1@abc"]);
+
+  const undone = await json(req("POST", "/api/done", { body: JSON.stringify({ key: "pr:o/r#1@abc", done: false }) }));
+  assert.equal(undone.status, 200);
+  assert.deepEqual(readDone(ctx), {});
+});
+
+test("a done mark needs the token, a key and a yes or no", async () => {
+  const body = JSON.stringify({ key: "k", done: true });
+  assert.equal((await app.handle(req("POST", "/api/done", { body, headers: { "x-divination-token": "wrong" } }))).status, 403);
+  assert.equal((await app.handle(req("GET", "/api/done"))).status, 405);
+  for (const bad of [{ done: true }, { key: "", done: true }, { key: "k" }, { key: "k", done: "yes" }, { key: "x".repeat(401), done: true }]) {
+    assert.equal((await app.handle(req("POST", "/api/done", { body: JSON.stringify(bad) }))).status, 400, JSON.stringify(bad));
+  }
+  assert.deepEqual(readDone(ctx), {});
 });

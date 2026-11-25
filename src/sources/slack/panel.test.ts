@@ -75,7 +75,7 @@ test("each thread is a linked title and one meta line that starts with where it 
   const html = slackHtml();
   assert.ok(
     html.includes(
-      '<li class="item thread needs-you"><a href="https://w.slack.com/archives/C1/p200000100" target="_blank" rel="noopener noreferrer">Sam, can you confirm?</a>\n<p class="meta">#team-dev · Sam, Ana · 4 · mentioned you</p></li>',
+      '<li class="item thread needs-you"><a href="https://w.slack.com/archives/C1/p200000100" target="_blank" rel="noopener noreferrer">Sam, can you confirm?</a>\n<p class="meta">#team-dev · Sam, Ana · 4 · mentioned you</p><button type="button" class="tick" data-done="slack:C1:200.000100@1795300000.000100" data-state="open"',
     ),
   );
   assert.ok(html.includes('<p class="meta">Ana · 1 · waiting on your reply</p>')); // a direct message has no #, and its name is the author
@@ -120,7 +120,7 @@ test("alerts panel shows counts and quiet channels", () => {
   assert.ok(html.includes('<h4 class="conv">#svc-alerts</h4>'));
   assert.ok(
     html.includes(
-      '<li class="alert state-firing"><span class="times">×3</span> <a href="https://w.slack.com/archives/C2/p1" target="_blank" rel="noopener noreferrer">Triggered: 5xx &lt;rate&gt;</a> <span class="state">firing</span></li>',
+      '<li class="alert state-firing"><span class="times">×3</span> <a href="https://w.slack.com/archives/C2/p1" target="_blank" rel="noopener noreferrer">Triggered: 5xx &lt;rate&gt;</a> <span class="state">firing</span><button type="button" class="tick"',
     ),
   );
   assert.ok(html.includes('<p class="quiet">Quiet today: #monthly-monitor</p>'));
@@ -136,8 +136,38 @@ test("with no alert channels, or none firing, the alerts panel still says someth
 
 test("every thread that needs me is an attention item, dated by its latest message", () => {
   assert.deepEqual(slack.attention(DATA, view), [
-    { key: "C1:200.000100", title: "#team-dev", reason: "mentioned you", url: "https://w.slack.com/archives/C1/p200000100", at: 1795300000000 },
-    { key: "D1:500.000100", title: "Ana", reason: "waiting on your reply", url: "https://w.slack.com/archives/D1/p500000100", at: Number(today(30).split(".")[0]) * 1000 },
+    { key: "C1:200.000100", title: "#team-dev", reason: "mentioned you", url: "https://w.slack.com/archives/C1/p200000100", at: 1795300000000, doneKey: "slack:C1:200.000100@1795300000.000100" },
+    { key: "D1:500.000100", title: "Ana", reason: "waiting on your reply", url: "https://w.slack.com/archives/D1/p500000100", at: Number(today(30).split(".")[0]) * 1000, doneKey: `slack:D1:500.000100@${today(30)}` },
   ]);
   assert.ok(NOW > 0);
+});
+
+test("threads and alert rows carry ticks; done ones fold away and a new reply or a new alert brings them back", () => {
+  const key = `slack:C1:300.000100@${today(60)}`;
+  const open = slackHtml();
+  assert.ok(open.includes(`data-done="${key}" data-state="open"`));
+
+  const v = { ...view, done: { [key]: NOW, [`alert:C2:Recovered: queue depth@${today(80)}`]: NOW } };
+  const html = slackHtml(v);
+  const fold = html.slice(html.indexOf('<details class="stale done">'));
+  assert.ok(fold.startsWith('<details class="stale done">\n<summary>Done · 1</summary>'));
+  assert.ok(fold.includes("Is the &lt;build&gt; broken?"));
+  assert.ok(!html.slice(0, html.indexOf('<details class="stale done">')).includes("Is the &lt;build&gt; broken?"));
+
+  const alerts = slackPanels(DATA, v).find((p) => p.id === "alerts")!.html;
+  const alertFold = alerts.slice(alerts.indexOf('<details class="stale done">'));
+  assert.ok(alertFold.includes("Recovered: queue depth") && !alertFold.includes("Triggered: 5xx"));
+  assert.ok(alerts.includes('data-done="alert:C2:Triggered: 5xx &lt;rate&gt;@' + today(90) + '" data-state="open"'));
+
+  // A new reply moves latestTs, which changes the key.
+  const replied: SlackData = { ...DATA, threads: DATA.threads.map((t) => (t.ts === "300.000100" ? { ...t, latestTs: today(200) } : t)) };
+  assert.ok(!slackPanels(replied, v).find((p) => p.id === "slack")!.html.includes("Done ·"));
+});
+
+test("a done thread needs no summary button, and its needs-you item carries the same key", () => {
+  const long: SlackData = { ...DATA, threads: [thread("C1", "300.000100", { latestTs: today(60), needsYou: "mentioned you" })] };
+  const key = `slack:C1:300.000100@${today(60)}`;
+  assert.ok(slackPanels(long, view).find((p) => p.id === "slack")!.html.includes("data-enrich"));
+  assert.ok(!slackPanels(long, { ...view, done: { [key]: NOW } }).find((p) => p.id === "slack")!.html.includes("data-enrich"));
+  assert.equal(slack.attention(long, view)[0]!.doneKey, key);
 });

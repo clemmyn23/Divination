@@ -37,6 +37,52 @@
   const POLL_MS = 3000;
   const el = (id) => document.getElementById(id);
   const enrichButtons = () => document.querySelectorAll("button[data-enrich]");
+  const ticks = () => document.querySelectorAll("button[data-done]");
+
+  // ---- Keeping my place across a reload: each panel's scroll position and its open folds ----
+
+  const VIEW_KEY = "divination-view";
+  const panelOf = (element) => element.closest(".panel")?.id;
+
+  function rememberView() {
+    try {
+      const scroll = {};
+      for (const body of document.querySelectorAll(".panel-body")) {
+        const id = panelOf(body);
+        if (id && body.scrollTop > 0) scroll[id] = body.scrollTop;
+      }
+      const open = [];
+      for (const fold of document.querySelectorAll("details.stale")) {
+        const id = panelOf(fold);
+        if (id && fold.open) open.push(`${id}:${fold.className}`);
+      }
+      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ scroll, open }));
+    } catch {
+      // Storage can be blocked; the page then reloads from the top.
+    }
+  }
+
+  function restoreView() {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(VIEW_KEY) ?? "null");
+      if (!saved) return;
+      // Folds first: opening one changes how far its panel can scroll.
+      for (const fold of document.querySelectorAll("details.stale")) {
+        if ((saved.open ?? []).includes(`${panelOf(fold)}:${fold.className}`)) fold.open = true;
+      }
+      for (const body of document.querySelectorAll(".panel-body")) {
+        const top = (saved.scroll ?? {})[panelOf(body)];
+        if (typeof top === "number") body.scrollTop = top;
+      }
+    } catch {
+      // Nothing usable was remembered.
+    }
+  }
+
+  function reload() {
+    rememberView();
+    location.reload();
+  }
 
   let online = false;
   let seenRenderedAt = null; // the page file's timestamp when this page was loaded
@@ -71,7 +117,7 @@
     seenRenderedAt = status.renderedAt;
     seenStartedAt = status.startedAt;
     if (changed) {
-      location.reload();
+      reload();
       return;
     }
 
@@ -92,6 +138,7 @@
     for (const button of enrichButtons()) {
       if (!pending || button !== pending.button) button.disabled = busy;
     }
+    for (const button of ticks()) button.disabled = false;
 
     if (busy) setStatus(status.job.name.startsWith("enrich") ? "asking Claude…" : "updating…");
     else if (status.lastJob && !status.lastJob.ok) setStatus(`failed: ${status.lastJob.error}`);
@@ -108,6 +155,7 @@
       if (button) button.disabled = true;
     }
     for (const button of enrichButtons()) button.disabled = true;
+    for (const button of ticks()) button.disabled = true;
     setStatus("server not running");
   }
 
@@ -152,6 +200,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     applyTheme(theme); // labels the button once it exists
+    restoreView();
     poll();
     setInterval(poll, POLL_MS);
   });
@@ -196,6 +245,15 @@
 
     if (target.closest("#refresh-now")) {
       await act("/api/tick");
+      return;
+    }
+
+    // Tick a line off, or take the tick back. The server redraws the page, which reloads this one.
+    const tick = target.closest("button[data-done]");
+    if (tick) {
+      tick.disabled = true;
+      const marked = await act("/api/done", { key: tick.dataset.done, done: tick.dataset.state !== "done" });
+      if (!marked) tick.disabled = false;
       return;
     }
 

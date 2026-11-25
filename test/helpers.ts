@@ -99,7 +99,7 @@ export function item(key: string): AttentionItem {
 }
 
 /** A view at NOW with the default config and nothing enriched. */
-export const view: View = { now: NOW, config: loadConfig(tempRoot()), enrich: {} };
+export const view: View = { now: NOW, config: loadConfig(tempRoot()), enrich: {}, done: {} };
 
 /** Collect what a command prints with console.log. Call `restore()` when done. */
 export function captureLog(): { lines: string[]; restore(): void } {

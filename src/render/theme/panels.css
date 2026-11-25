@@ -13,6 +13,7 @@
  *   p.headline, svg.terrain, ul.events   the calendar panel
  *   details.review > div.finding > pre   a drafted review, folded shut until opened
  *   details.stale                        old things, folded shut (see src/render/old.ts)
+ *   button.tick, details.stale.done      marking a line done (see src/render/done.ts)
  *
  * Keep items to a title line and one meta line. Space is tight on purpose.
  */
@@ -312,6 +313,54 @@
 .stale > .items,
 .stale > .attention {
   opacity: 0.75;
+}
+
+/* Ticking a line off. The tick sits at the right of its line; done lines fold away, struck through. */
+
+.items > li,
+.attention > li {
+  padding-right: 26px;
+}
+
+.panel-body .tick {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  color: transparent;
+  background: transparent;
+}
+
+.panel-body .tick:hover:not(:disabled) {
+  color: var(--good);
+  border-color: var(--good);
+}
+
+.panel-body .tick[data-state="done"] {
+  color: var(--card);
+  border-color: var(--good);
+  background: var(--good);
+}
+
+.alert-rows .tick {
+  position: static;
+  flex: none;
+  margin-left: 2px;
+}
+
+.done > .alert-rows {
+  opacity: 0.75;
+}
+
+.panel-body .done a {
+  text-decoration: line-through;
 }
 
 /* Alerts. */

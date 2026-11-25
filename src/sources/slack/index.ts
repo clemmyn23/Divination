@@ -4,7 +4,7 @@ import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
 import { fromInbox } from "./inbox.ts";
 import { conversationsFromConfig } from "./normalise.ts";
-import { slackPanels, threadKey, tsMs } from "./panel.ts";
+import { slackPanels, threadDoneKey, threadKey, tsMs } from "./panel.ts";
 import { slackSummary } from "./summary.enricher.ts";
 import type { SlackData } from "./types.ts";
 
@@ -96,7 +96,7 @@ export const slack: Source<SlackData> = {
       .map((t) => {
         const conversation = byId.get(t.channelId);
         const title = conversation ? (conversation.kind === "dm" ? conversation.name : `#${conversation.name}`) : t.channelId;
-        return { key: threadKey(t), title, reason: t.needsYou!, url: t.url, at: tsMs(t.latestTs) };
+        return { key: threadKey(t), title, reason: t.needsYou!, url: t.url, at: tsMs(t.latestTs), doneKey: threadDoneKey(t) };
       });
   },
   panels: slackPanels,

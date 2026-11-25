@@ -109,6 +109,8 @@ export interface AttentionItem {
   url?: string;
   /** When this started waiting, in epoch ms. Old items are folded away; undated ones never are. */
   at?: number;
+  /** The key that marks this item's line as done. Without one the item cannot be ticked off. */
+  doneKey?: string;
 }
 
 export interface Panel {
@@ -139,6 +141,8 @@ export interface View {
   config: Config;
   /** enricher id -> item key -> cached output */
   enrich: Record<string, Record<string, unknown>>;
+  /** Lines ticked off by hand: done key -> when. See `src/core/done.ts`. */
+  done: Record<string, number>;
 }
 
 export interface Enricher<TData> {

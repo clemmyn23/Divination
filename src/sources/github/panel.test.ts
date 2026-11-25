@@ -165,8 +165,8 @@ test("an empty queue says so", () => {
 test("PRs that need you become needs-you items with their reasons", () => {
   const items = github.attention(DATA, view);
   assert.deepEqual(items, [
-    { key: "o/r#1", title: "Change 1", reason: "touches billing, rotation, CI passing", url: "https://git.example.com/o/r/pull/1", at: NOW - 86_400_000 },
-    { key: "o/r#2", title: "Change 2", reason: "quick win, CI passing", url: "https://git.example.com/o/r/pull/2", at: NOW - 86_400_000 },
+    { key: "o/r#1", title: "Change 1", reason: "touches billing, rotation, CI passing", url: "https://git.example.com/o/r/pull/1", at: NOW - 86_400_000, doneKey: "pr:o/r#1@aaa111" },
+    { key: "o/r#2", title: "Change 2", reason: "quick win, CI passing", url: "https://git.example.com/o/r/pull/2", at: NOW - 86_400_000, doneKey: "pr:o/r#2@sha2" },
   ]);
   assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs"]);
 });
@@ -181,4 +181,30 @@ test("a PR raised by a crew member carries a lozenge on its meta line, and says 
   const reasons = github.attention(data, view).map((a) => a.reason);
   assert.ok(reasons[0]!.endsWith("raised by crew member"));
   assert.ok(!reasons[1]!.includes("crew member"));
+});
+
+test("every PR carries a tick; a PR marked done folds away, is not counted, and can be unticked", () => {
+  const data: GithubData = { login: "me", prs: [pr(1, "review_now"), pr(2, "review_now"), pr(3, "blocked")] };
+  const open = githubPanels(data, view)[0]!.html;
+  assert.equal(open.match(/class="tick"/g)!.length, 3);
+  assert.ok(open.includes('data-done="pr:o/r#1@aaa111" data-state="open"'));
+  assert.ok(!open.includes("Done ·"));
+
+  const v = { ...view, done: { "pr:o/r#1@aaa111": NOW, "pr:o/r#3@sha3": NOW } };
+  const html = githubPanels(data, v)[0]!.html;
+  assert.ok(html.includes('<h3 class="group">Needs you · 1</h3>'));
+  assert.ok(!html.includes("Waiting on authors"));
+  const fold = html.slice(html.indexOf('<details class="stale done">'));
+  assert.ok(fold.startsWith('<details class="stale done">\n<summary>Done · 2</summary>'));
+  assert.ok(fold.includes("Change 1") && fold.includes("Change 3") && !fold.includes("Change 2"));
+  assert.ok(fold.includes('data-done="pr:o/r#1@aaa111" data-state="done"'));
+
+  // New commits change the key, so the PR comes back.
+  const moved: GithubData = { login: "me", prs: [pr(1, "review_now", { headSha: "bbb222" })] };
+  assert.ok(!githubPanels(moved, v)[0]!.html.includes("Done ·"));
+});
+
+test("a PR's needs-you item carries the same key, so ticking either clears both", () => {
+  const data: GithubData = { login: "me", prs: [pr(1, "review_now")] };
+  assert.equal(github.attention(data, view)[0]!.doneKey, "pr:o/r#1@aaa111");
 });

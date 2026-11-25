@@ -23,8 +23,15 @@ class FakeElement {
     if (selector === `#${this.id}`) return this;
     if (selector === "button[data-copy]" && "copy" in this.dataset) return this;
     if (selector === "button[data-enrich]" && "enrich" in this.dataset) return this;
+    if (selector === "button[data-done]" && "done" in this.dataset) return this;
+    if (selector === ".panel" && this.panelId) return { id: this.panelId } as unknown as FakeElement;
     return null;
   }
+  // For the parts of a panel: its scrolling body and its folds.
+  panelId = "";
+  scrollTop = 0;
+  open = false;
+  className = "";
 }
 
 interface Status {
@@ -39,6 +46,8 @@ interface Status {
 const LIVE: Status = { live: true, nextTickAt: Date.parse("2026-11-25T03:15:00Z"), renderedAt: 100, startedAt: 50, job: null, lastJob: null };
 
 interface Options {
+  /** What sessionStorage holds when the page loads. */
+  session?: string;
   storageBroken?: boolean;
   /** What the server answers. `null` means the server cannot be reached. */
   status?: Status | null;
@@ -56,6 +65,17 @@ function page(stored: string | null, opts: Options = {}) {
   const draft = new FakeElement("draft-1", "Draft review");
   draft.dataset.enrich = "pr-review";
   draft.dataset.key = "o/r#1@aaa111";
+
+  const tick = new FakeElement("tick-1", "✓");
+  tick.dataset.done = "pr:o/r#1@aaa111";
+  tick.dataset.state = "open";
+  const body = new FakeElement("body-prs");
+  body.panelId = "prs";
+  const fold = new FakeElement("fold-prs");
+  fold.panelId = "prs";
+  fold.className = "stale done";
+  const session = new Map<string, string>();
+  if (opts.session !== undefined) session.set("divination-view", opts.session);
 
   const store = new Map<string, string>();
   if (stored !== null) store.set("divination-theme", stored);
@@ -83,8 +103,19 @@ function page(stored: string | null, opts: Options = {}) {
       if (method === "POST") {
         if (server.postStatus === 409) return { ok: false, status: 409, json: async () => ({ error: "busy" }) };
         if (url === "/api/live") server.status = { ...server.status, live: (JSON.parse(init.body!) as { on: boolean }).on, nextTickAt: null };
+        if (url === "/api/done") server.status = { ...server.status, renderedAt: server.status.renderedAt + 1 }; // the server redraws the page
       }
       return { ok: true, status: 200, json: async () => server.status };
+    },
+    sessionStorage: {
+      getItem: (key: string) => {
+        if (opts.storageBroken) throw new Error("blocked");
+        return session.get(key) ?? null;
+      },
+      setItem: (key: string, value: string) => {
+        if (opts.storageBroken) throw new Error("blocked");
+        session.set(key, value);
+      },
     },
     localStorage: {
       getItem: (key: string) => {
@@ -100,7 +131,14 @@ function page(stored: string | null, opts: Options = {}) {
       documentElement: root,
       getElementById: (id: string) => (parsed ? (elements[id] ?? null) : null),
       querySelector: (selector: string) => (parsed && selector === 'meta[name="divination-token"]' ? { content: "tok" } : null),
-      querySelectorAll: (selector: string) => (parsed && selector === "button[data-enrich]" ? [draft] : []),
+      querySelectorAll: (selector: string) => {
+        if (!parsed) return [];
+        if (selector === "button[data-enrich]") return [draft];
+        if (selector === "button[data-done]") return [tick];
+        if (selector === ".panel-body") return [body];
+        if (selector === "details.stale") return [fold];
+        return [];
+      },
       addEventListener: (type: string, fn: (event: unknown) => unknown) => {
         (listeners[type] ??= []).push(fn);
       },
@@ -113,6 +151,10 @@ function page(stored: string | null, opts: Options = {}) {
     store,
     server,
     draft,
+    tick,
+    body,
+    fold,
+    session,
     toggle: elements["theme-toggle"]!,
     liveToggle: elements["live-toggle"]!,
     refreshNow: elements["refresh-now"]!,
@@ -345,4 +387,68 @@ test("the buttons come back when the server does", async () => {
   await p.poll();
   assert.deepEqual([p.liveToggle.disabled, p.refreshNow.disabled, p.draft.disabled], [false, false, false]);
   assert.equal(p.liveToggle.textContent, "Pause");
+});
+
+// Marking lines done
+
+test("ticking a line tells the server which line and that it is now done, then the page reloads", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.tick);
+  assert.deepEqual(p.posts(), [
+    { url: "/api/done", method: "POST", headers: { "content-type": "application/json", "x-divination-token": "tok" }, body: { key: "pr:o/r#1@aaa111", done: true } },
+  ]);
+  assert.equal(p.reloads, 1);
+});
+
+test("ticking a done line takes the mark back", async () => {
+  const p = page(null);
+  p.tick.dataset.state = "done";
+  await p.finishParsing();
+  await p.click(p.tick);
+  assert.deepEqual(p.posts()[0]!.body, { key: "pr:o/r#1@aaa111", done: false });
+});
+
+test("a tick the server refuses is given back, and ticks are off while the server is down", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.server.postStatus = 409;
+  await p.click(p.tick);
+  assert.equal(p.tick.disabled, false);
+  assert.equal(p.reloads, 0);
+
+  const down = page(null, { status: null });
+  await down.finishParsing();
+  assert.equal(down.tick.disabled, true);
+  await down.click(down.tick);
+  assert.equal(down.posts().length, 0);
+});
+
+test("a reload keeps my place: each panel's scroll position and which folds were open", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.body.scrollTop = 240;
+  p.fold.open = true;
+  await p.click(p.tick); // reloads
+  assert.deepEqual(JSON.parse(p.session.get("divination-view")!), { scroll: { prs: 240 }, open: ["prs:stale done"] });
+
+  const next = page(null, { session: p.session.get("divination-view")! });
+  await next.finishParsing();
+  assert.equal(next.body.scrollTop, 240);
+  assert.equal(next.fold.open, true);
+});
+
+test("with nothing remembered, or storage blocked or holding junk, the page still loads", async () => {
+  const fresh = page(null);
+  await fresh.finishParsing();
+  assert.deepEqual([fresh.body.scrollTop, fresh.fold.open], [0, false]);
+
+  const junk = page(null, { session: "{not json" });
+  await junk.finishParsing();
+  assert.equal(junk.liveToggle.textContent, "Pause");
+
+  const blocked = page(null, { storageBroken: true });
+  await blocked.finishParsing();
+  await blocked.click(blocked.tick);
+  assert.equal(blocked.reloads, 1);
 });

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tick } from "../cli/commands/tick.ts";
+import { DONE_KEY_MAX, setDone } from "../core/done.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
 import { renderSite } from "../render/site.ts";
@@ -41,6 +42,7 @@ const ROUTES: Record<string, "GET" | "POST"> = {
   "/api/live": "POST",
   "/api/tick": "POST",
   "/api/enrich": "POST",
+  "/api/done": "POST",
 };
 
 /**
@@ -123,6 +125,16 @@ export function createApp(ctx: Context, sources: Source<any>[], token: string, t
       case "/api/tick": {
         const started = jobs.run("tick", () => tick(ctx, sources, { force: true }));
         return started ? json(202, status()) : refuse(409, "busy");
+      }
+
+      case "/api/done": {
+        const { key, done } = fields;
+        if (typeof key !== "string" || key === "" || key.length > DONE_KEY_MAX || typeof done !== "boolean") {
+          return refuse(400, '"key" must be a short string and "done" true or false');
+        }
+        setDone(ctx, key, done);
+        renderSite(ctx, sources); // the page file changes, so open pages reload and show it
+        return json(200, status());
       }
 
       case "/api/enrich": {

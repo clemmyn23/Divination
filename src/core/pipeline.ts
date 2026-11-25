@@ -1,6 +1,7 @@
 import { statSync } from "node:fs";
 import { cacheGet } from "../enrich/cache.ts";
 import { ConfigError } from "./config.ts";
+import { readDone } from "./done.ts";
 import { readJson, writeJson } from "./store.ts";
 import type { Config, Context, Envelope, Source, View } from "./types.ts";
 
@@ -91,7 +92,7 @@ export function buildView(ctx: Context, sources: Source<any>[]): View {
       }
     }
   }
-  return { now: ctx.now(), config: ctx.config, enrich };
+  return { now: ctx.now(), config: ctx.config, enrich, done: readDone(ctx) };
 }
 
 /** Collect every source. One failing source does not stop the others. */

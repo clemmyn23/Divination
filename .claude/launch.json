@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "divination",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["bin/divination.ts", "serve"],
+      "port": 4815
+    }
+  ]
+}
