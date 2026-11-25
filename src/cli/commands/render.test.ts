@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { NOW, captureLog, contextWith, fakeSource } from "../../../test/helpers.ts";
 import { buildView, collectSource } from "../../core/pipeline.ts";
@@ -36,6 +36,25 @@ test("render works before anything was collected", async () => {
   }
   assert.ok(existsSync(ctx.paths.site));
   assert.ok(readFileSync(ctx.paths.site, "utf8").includes("No data yet"));
+});
+
+test("render --fixtures draws the sample page beside the real one without touching it", async () => {
+  const ctx = contextWith({ sources: ["fake"] });
+  const out = captureLog();
+  try {
+    assert.equal(await renderCommand(() => ctx, [source]).run(["--fixtures"]), 0);
+  } finally {
+    out.restore();
+  }
+  const fixturePath = join(dirname(ctx.paths.site), "fixture.html");
+  assert.deepEqual(out.lines, [fixturePath]);
+  assert.equal(existsSync(ctx.paths.site), false);
+
+  const html = readFileSync(fixturePath, "utf8");
+  const ids = [...html.matchAll(/<section id="(\w+)"/g)].map((m) => m[1]);
+  assert.deepEqual(ids, ["today", "prs", "slack", "alerts"]);
+  assert.match(html, /id="needs-you" data-count="[1-9]/);
+  assert.ok(html.includes('data-stale="true"')); // one sample source is deliberately old
 });
 
 test("the view carries the clock and config, with nothing enriched yet", () => {

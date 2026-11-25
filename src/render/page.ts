@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
 import { esc, link } from "./html.ts";
+import { mascotSvg } from "./mascot.ts";
 
 export interface PageEntry {
   source: Source<any>;
@@ -72,11 +73,12 @@ function dateLine(view: View): string {
   }).format(new Date(view.now));
 }
 
-/** What sits in the header beside the title. Task 5 puts the mascot here. */
+/** The mascot and the count, beside the title. */
 export function needsYouBadge(count: number): string {
+  const label = count === 0 ? "Nothing needs you" : count === 1 ? "1 thing needs you" : `${count} things need you`;
   return `<div id="needs-you" data-count="${count}">
-<span class="count">${count}</span>
-<span class="label">${count === 1 ? "thing needs you" : "things need you"}</span>
+${mascotSvg(count)}
+<p class="needs-label">${label}</p>
 </div>`;
 }
 

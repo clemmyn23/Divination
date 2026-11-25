@@ -1,0 +1,314 @@
+/*
+ * Panels and what goes inside them. Sources build their panel HTML from these classes:
+ *
+ *   h3.group            a heading inside a panel ("Needs you", a Slack group)
+ *   h4.conv             a conversation name
+ *   ul.items > li.item  a list of things; li.thread and li.pr are items too
+ *   li.needs-you        an item that is waiting on you
+ *   p.meta              the small line under an item
+ *   span.tag            a small label (rotation, direct, optional)
+ *   span.ci-pass | ci-fail | ci-pending
+ *   ul.alert-rows > li.alert.state-firing | state-resolved | state-info
+ *   p.quiet, p.empty    nothing to show
+ *   p.headline, svg.terrain, ul.events   the calendar panel
+ *   div.review > div.finding > pre       a drafted review comment
+ */
+
+.panel {
+  break-inside: avoid;
+  margin: 0 0 18px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.tint-butter {
+  --tint: var(--butter);
+}
+
+.tint-blush {
+  --tint: var(--blush);
+}
+
+.tint-mint {
+  --tint: var(--mint);
+}
+
+.tint-lilac {
+  --tint: var(--lilac);
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding: 12px 18px;
+  background: var(--tint);
+}
+
+.panel-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.updated {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.panel-body {
+  padding: 14px 18px 18px;
+}
+
+.panel-body > :first-child {
+  margin-top: 0;
+}
+
+.panel-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* A panel whose data is old dozes off. */
+
+.panel[data-stale="true"] {
+  opacity: 0.6;
+}
+
+.dozing {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--card);
+}
+
+.source-error {
+  margin: 0;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  border-bottom: 1px dashed var(--line);
+}
+
+/* Headings and lists. */
+
+.group {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.conv {
+  margin: 12px 0 4px;
+  font-size: 14px;
+}
+
+.items,
+.alert-rows,
+.events {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items > li {
+  position: relative;
+  margin: 0;
+  padding: 7px 0 7px 22px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.items > li:last-child {
+  border-bottom: 0;
+}
+
+.items > li::before {
+  content: "✦";
+  position: absolute;
+  left: 2px;
+  top: 7px;
+  color: var(--line);
+}
+
+.items > li.needs-you::before {
+  content: "★";
+  color: var(--accent);
+}
+
+.items > li.needs-you > a {
+  font-weight: 700;
+}
+
+.meta {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-soft);
+}
+
+.tag {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--tint, var(--lilac));
+}
+
+.ci-pass {
+  color: var(--good);
+}
+
+.ci-fail {
+  color: var(--bad);
+}
+
+.ci-pending {
+  color: var(--warn);
+}
+
+.items button,
+.panel-body > button {
+  margin-top: 6px;
+}
+
+.quiet,
+.empty {
+  margin: 4px 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+/* Alerts. */
+
+.alert-rows > li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  font-size: 14px;
+}
+
+.alert-rows .times {
+  font-weight: 800;
+}
+
+.alert-rows .state {
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.state-firing .state {
+  color: var(--accent-ink);
+  background: var(--bad);
+}
+
+.state-resolved .state {
+  color: var(--good);
+  border: 1.5px solid var(--good);
+}
+
+.state-info .state {
+  color: var(--ink-soft);
+  border: 1.5px solid var(--line);
+}
+
+/* Calendar. */
+
+.headline {
+  margin: 0 0 6px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.terrain {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 4px 0 8px;
+}
+
+.terrain path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.events > li {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+}
+
+.events .time {
+  flex: none;
+  width: 92px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+
+.events .optional {
+  color: var(--ink-soft);
+}
+
+.all-day {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* Drafted reviews. */
+
+.review {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--paper);
+}
+
+.review > p {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+}
+
+.verdict {
+  font-weight: 700;
+}
+
+.finding {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--line);
+}
+
+.finding .where {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.finding pre {
+  margin: 4px 0 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12.5px;
+  white-space: pre-wrap;
+}

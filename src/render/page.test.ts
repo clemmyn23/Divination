@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { NOW, fakeSource, item, ok, view } from "../../test/helpers.ts";
 import { renderPage } from "./page.ts";
 
@@ -106,6 +109,35 @@ test("styles and the script are inlined once each", () => {
   assert.equal((html.match(/<script>/g) ?? []).length, 1);
   assert.ok(html.includes("data-copy"));
   assert.ok(html.startsWith("<!doctype html>"));
+});
+
+test("mascot is in the header with the count", () => {
+  const src = fakeSource({ attention: () => [item("1"), item("2"), item("3"), item("4")] });
+  const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
+  assert.match(html, /<header[\s\S]*class="mascot mascot-alarmed"[\s\S]*<\/header>/);
+  assert.match(html, /<div id="needs-you" data-count="4">\s*<svg class="mascot/);
+});
+
+test("theme defines tokens, dark mode and the phone breakpoint", () => {
+  const themeDir = fileURLToPath(new URL("./theme/", import.meta.url));
+  const css = readdirSync(themeDir)
+    .map((f) => readFileSync(join(themeDir, f), "utf8"))
+    .join("\n");
+  for (const needle of [
+    "--paper",
+    "--accent",
+    "prefers-color-scheme: dark",
+    "max-width: 640px",
+    ".tint-butter",
+    ".tint-blush",
+    ".tint-mint",
+    ".tint-lilac",
+    '[data-stale="true"]',
+    "button[data-enrich]",
+    "ui-rounded",
+  ]) {
+    assert.ok(css.includes(needle), needle);
+  }
 });
 
 test("no external resources", () => {

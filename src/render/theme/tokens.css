@@ -1,0 +1,58 @@
+/* Fortune-teller's desk. Every colour on the page comes from here. */
+
+:root {
+  color-scheme: light dark;
+
+  --paper: #fbf6ec;
+  --speck: #eadfcb;
+  --ink: #3b2a4a;
+  --ink-soft: #7a6b86;
+  --card: #ffffff;
+  --line: #eadfcb;
+  --shadow: 0 6px 18px rgba(59, 42, 74, 0.1);
+
+  --butter: #ffefb8;
+  --blush: #ffd9e3;
+  --mint: #d5f2e3;
+  --lilac: #e4dbff;
+
+  --accent: #e0568b;
+  --accent-ink: #ffffff;
+  --good: #2f8f63;
+  --warn: #b9770e;
+  --bad: #c7385f;
+
+  --ball: #cdbcff;
+  --ball-edge: #8f77d9;
+  --stand: #c99a5b;
+
+  --radius: 16px;
+  --font: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1e1a2e;
+    --speck: #2c2644;
+    --ink: #f3ecff;
+    --ink-soft: #b9afcb;
+    --card: #2a2440;
+    --line: #3a3357;
+    --shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+
+    --butter: #4a4326;
+    --blush: #4d2b3a;
+    --mint: #25453a;
+    --lilac: #3a3160;
+
+    --accent: #ff7fae;
+    --accent-ink: #2a1020;
+    --good: #7fd6a8;
+    --warn: #f0c36b;
+    --bad: #ff8fa9;
+
+    --ball: #6d5bb5;
+    --ball-edge: #b9a8ff;
+    --stand: #8a6a3f;
+  }
+}

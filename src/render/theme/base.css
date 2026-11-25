@@ -1,4 +1,4 @@
-/* Structure only. Colours and the cutesy look live in tokens.css and panels.css. */
+/* Page structure, header and controls. Colours come from tokens.css. */
 
 * {
   box-sizing: border-box;
@@ -7,8 +7,23 @@
 body {
   margin: 0;
   padding: 24px;
-  font-family: -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font);
   line-height: 1.45;
+  color: var(--ink);
+  background-color: var(--paper);
+  background-image: radial-gradient(var(--speck) 1.2px, transparent 1.2px);
+  background-size: 28px 28px;
+}
+
+a {
+  color: inherit;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--accent);
 }
 
 header,
@@ -17,53 +32,206 @@ main {
   margin: 0 auto;
 }
 
+header {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "controls controls"
+    "ball     masthead"
+    "ball     attention";
+  column-gap: 20px;
+  align-items: start;
+}
+
+/* Controls: a pill at the top right. */
+
 #controls {
+  grid-area: controls;
+  justify-self: end;
   display: flex;
   gap: 8px;
   align-items: center;
-  justify-content: flex-end;
+  padding: 6px 8px 6px 14px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+#live-status {
+  order: -1;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+#live-status:empty {
+  display: none;
+}
+
+button {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--card);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+#live-toggle {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Buttons that call Claude carry a sparkle, so it is always clear which ones do. */
+button[data-enrich] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button[data-enrich]::before {
+  content: "✨ ";
+}
+
+/* Masthead, mascot and the needs-you list. */
+
+.masthead {
+  grid-area: masthead;
+  align-self: end;
+  padding-top: 8px;
 }
 
 h1 {
   margin: 0;
+  font-size: 34px;
+  letter-spacing: -0.02em;
 }
 
 .today {
   margin: 0;
+  color: var(--ink-soft);
+}
+
+#needs-you {
+  grid-area: ball;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.needs-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
 }
 
 .attention {
-  padding-left: 1.4em;
+  grid-area: attention;
+  margin: 10px 0 0;
+  padding-left: 1.5em;
 }
 
+.attention li {
+  margin: 3px 0;
+}
+
+.attention li::marker {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.reason {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+/* The mascot. */
+
+.mascot {
+  display: block;
+}
+
+.mascot .ball {
+  fill: var(--ball);
+  stroke: var(--ball-edge);
+  stroke-width: 3;
+}
+
+.mascot .shine {
+  fill: none;
+  stroke: #ffffff;
+  stroke-opacity: 0.75;
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+
+.mascot .stand,
+.mascot .stand-top {
+  fill: var(--stand);
+}
+
+.mascot .cheek {
+  fill: var(--accent);
+  fill-opacity: 0.45;
+}
+
+.mascot .eyes,
+.mascot .mouth {
+  fill: var(--ink);
+  stroke: var(--ink);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.mascot-sleepy .eyes,
+.mascot-sleepy .mouth,
+.mascot-awake .mouth {
+  fill: none;
+}
+
+.mascot .glint {
+  fill: #ffffff;
+  stroke: none;
+}
+
+.mascot-count {
+  font-family: var(--font);
+  font-size: 20px;
+  font-weight: 800;
+  fill: var(--ink);
+}
+
+.mascot .star {
+  fill: var(--accent);
+}
+
+.mascot .zzz {
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 800;
+  fill: var(--ink-soft);
+}
+
+/* Panels grid. */
+
+/* Two flowing columns, so a short panel does not leave a hole beside a tall one. */
 main {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.panel {
-  min-width: 0;
-  padding: 16px;
-  border: 1px solid;
-  overflow-wrap: anywhere;
-}
-
-.panel-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.panel-head h2,
-.panel-head p {
-  margin: 0;
-}
-
-pre {
-  white-space: pre-wrap;
+  column-count: 2;
+  column-gap: 18px;
+  margin-top: 28px;
 }
 
 @media (max-width: 640px) {
@@ -71,7 +239,20 @@ pre {
     padding: 16px;
   }
 
+  header {
+    column-gap: 12px;
+  }
+
+  h1 {
+    font-size: 26px;
+  }
+
+  .mascot {
+    width: 84px;
+    height: 91px;
+  }
+
   main {
-    grid-template-columns: 1fr;
+    column-count: 1;
   }
 }
