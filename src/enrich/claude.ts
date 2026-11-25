@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
+import { basename } from "node:path";
 import type { Context } from "../core/types.ts";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const TIMED_OUT = 124;
+/** The most of an answer that is kept in the log. */
+const LOG_MAX = 4000;
 
 export interface ClaudeRequest {
   /** A file holding the prompt text. */
@@ -22,6 +25,8 @@ interface CliOutput {
   is_error?: boolean;
   result?: unknown;
   structured_output?: unknown;
+  total_cost_usd?: number;
+  num_turns?: number;
 }
 
 function parseJson(text: string): unknown {
@@ -63,26 +68,49 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
   // Last on purpose: this flag takes every argument that follows it.
   if (req.allowedTools && req.allowedTools.length > 0) args.push("--allowedTools", ...req.allowedTools);
 
-  const res = await ctx.exec("claude", args, {
-    input: req.input,
-    env: req.env,
-    timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  // Logged for the page's activity view: what was asked of which model, how long it took,
+  // what it cost and what came back. The input is never logged.
+  const started = performance.now();
+  const elapsed = () => Math.round(performance.now() - started);
+  ctx.log("llm-start", { model: req.model, prompt: basename(req.promptFile), tools: req.allowedTools ?? [] });
+
+  let out: CliOutput | undefined;
+  const usage = () => ({
+    ...(typeof out?.total_cost_usd === "number" ? { costUsd: out.total_cost_usd } : {}),
+    ...(typeof out?.num_turns === "number" ? { turns: out.num_turns } : {}),
   });
 
-  if (res.code === TIMED_OUT) throw new Error("claude failed: timed out");
+  try {
+    const res = await ctx.exec("claude", args, {
+      input: req.input,
+      env: req.env,
+      timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    });
 
-  const out = parseJson(res.stdout) as CliOutput | undefined;
-  if (res.code !== 0 || out === undefined || typeof out !== "object" || out === null || out.is_error === true) {
-    const why =
-      typeof out?.result === "string" && out.result !== ""
-        ? out.result
-        : res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output was not JSON");
-    throw new Error(`claude failed: ${why}`);
+    if (res.code === TIMED_OUT) throw new Error("claude failed: timed out");
+
+    const parsed = parseJson(res.stdout);
+    out = typeof parsed === "object" && parsed !== null ? (parsed as CliOutput) : undefined;
+    if (res.code !== 0 || out === undefined || out.is_error === true) {
+      const why =
+        typeof out?.result === "string" && out.result !== ""
+          ? out.result
+          : res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output was not JSON");
+      throw new Error(`claude failed: ${why}`);
+    }
+
+    let answer: unknown;
+    if (typeof out.structured_output === "object" && out.structured_output !== null) answer = out.structured_output;
+    else {
+      answer = typeof out.result === "string" ? jsonFromText(out.result) : undefined;
+      if (answer === undefined) throw new Error("claude failed: the answer was not JSON");
+    }
+
+    const text = JSON.stringify(answer, null, 2);
+    ctx.log("llm", { ok: true, ms: elapsed(), model: req.model, ...usage(), output: text.length <= LOG_MAX ? text : `${text.slice(0, LOG_MAX - 1)}…` });
+    return answer;
+  } catch (e) {
+    ctx.log("llm", { ok: false, ms: elapsed(), model: req.model, ...usage(), error: e instanceof Error ? e.message : String(e) });
+    throw e;
   }
-
-  if (typeof out.structured_output === "object" && out.structured_output !== null) return out.structured_output;
-
-  const fromText = typeof out.result === "string" ? jsonFromText(out.result) : undefined;
-  if (fromText === undefined) throw new Error("claude failed: the answer was not JSON");
-  return fromText;
 }

@@ -132,3 +132,18 @@ test("unknown source id in config is a config error", () => {
     (e: Error) => e instanceof ConfigError && /nope/.test(e.message),
   );
 });
+
+test("collecting a source is logged when it starts and when it ends, with how long it took", async () => {
+  const logged: [string, Record<string, unknown>][] = [];
+  const ctx = contextWith({}, { log: (event, fields) => logged.push([event, { ...(fields as object) }]) });
+  await collectSource(fakeSource({ collect: async () => ({ n: 1 }) }), ctx);
+  await collectSource(fakeSource({ collect: async () => { throw new Error("boom"); } }), ctx);
+  assert.deepEqual(logged.map(([event, f]) => [event, f.source, f.ok, f.error]), [
+    ["collect-start", "fake", undefined, undefined],
+    ["collect", "fake", true, undefined],
+    ["collect-start", "fake", undefined, undefined],
+    ["collect", "fake", false, "boom"],
+  ]);
+  assert.equal(typeof logged[1]![1].ms, "number");
+  assert.equal(logged[1]![1].at, NOW);
+});

@@ -58,3 +58,35 @@ test("an expired login is reported in the CLI's own words", async () => {
 test("a timeout says so", async () => {
   await assert.rejects(runClaude(withClaude("", 124).ctx, req), /timed out/);
 });
+
+test("a Claude call is logged at start and end with its model, tools, time, cost and answer, and never its input", async () => {
+  const stdout = JSON.stringify({ type: "result", is_error: false, structured_output: { doubled: 4 }, duration_ms: 4200, total_cost_usd: 0.0312, num_turns: 3 });
+  const exec = fakeExec({ "claude -p": { stdout } });
+  const logged: [string, Record<string, unknown>][] = [];
+  const ctx = contextWith({}, { exec, log: (event, fields) => logged.push([event, { ...(fields as object) }]) });
+  await runClaude(ctx, { ...req, input: "private thread text", allowedTools: ["Bash(gh pr view:*)"] });
+
+  assert.deepEqual(logged[0], ["llm-start", { model: "haiku", prompt: "prompt.md", tools: ["Bash(gh pr view:*)"] }]);
+  const [event, end] = logged[1]!;
+  assert.equal(event, "llm");
+  assert.deepEqual({ ...end, ms: 0 }, { ok: true, ms: 0, model: "haiku", costUsd: 0.0312, turns: 3, output: '{\n  "doubled": 4\n}' });
+  assert.equal(typeof end.ms, "number");
+  assert.ok(!JSON.stringify(logged).includes("private thread text"));
+});
+
+test("a failed Claude call is logged with its error, and a very long answer is cut", async () => {
+  const logged: [string, Record<string, unknown>][] = [];
+  const failing = contextWith({}, { exec: fakeExec({ "claude -p": { stdout: fixture("claude-auth-failure.json"), code: 1 } }), log: (event, fields) => logged.push([event, { ...(fields as object) }]) });
+  await assert.rejects(runClaude(failing, req));
+  const end = logged.find(([event]) => event === "llm")![1];
+  assert.equal(end.ok, false);
+  assert.match(String(end.error), /^claude failed: /);
+  assert.equal(end.turns, 1);
+
+  const long: [string, Record<string, unknown>][] = [];
+  const stdout = JSON.stringify({ is_error: false, structured_output: { text: "x".repeat(9000) } });
+  await runClaude(contextWith({}, { exec: fakeExec({ "claude -p": { stdout } }), log: (event, fields) => long.push([event, { ...(fields as object) }]) }), req);
+  const output = String(long.find(([event]) => event === "llm")![1].output);
+  assert.equal(output.length, 4000);
+  assert.ok(output.endsWith("…"));
+});

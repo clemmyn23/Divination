@@ -51,6 +51,8 @@ async function gather(source: Source<any>, ctx: Context): Promise<{ data: unknow
 export async function collectSource(source: Source<any>, ctx: Context): Promise<Envelope<unknown>> {
   const previous = readEnvelope(source, ctx);
   const now = ctx.now();
+  const started = performance.now();
+  ctx.log("collect-start", { source: source.id });
 
   let envelope: Envelope<unknown>;
   try {
@@ -70,7 +72,13 @@ export async function collectSource(source: Source<any>, ctx: Context): Promise<
   }
 
   writeJson(ctx.paths.data(source.id), envelope);
-  ctx.log("collect", { source: source.id, ok: envelope.ok, ...(envelope.error ? { error: envelope.error } : {}) });
+  ctx.log("collect", {
+    source: source.id,
+    ok: envelope.ok,
+    ms: Math.round(performance.now() - started),
+    at: envelope.collectedAt,
+    ...(envelope.error ? { error: envelope.error } : {}),
+  });
   return envelope;
 }
 

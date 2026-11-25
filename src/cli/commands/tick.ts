@@ -25,7 +25,11 @@ function lockIsHeld(ctx: Context): boolean {
  */
 export async function tick(ctx: Context, sources: Source<any>[], opts: { force?: boolean } = {}): Promise<TickResult> {
   if (!opts.force && !withinActiveHours(ctx.now(), ctx.config.tick, ctx.config.me.timezone)) return "outside-hours";
-  if (lockIsHeld(ctx)) return "locked";
+  if (lockIsHeld(ctx)) {
+    ctx.log("tick", { result: "locked", ms: 0 });
+    return "locked";
+  }
+  ctx.log("tick-start", { forced: opts.force === true });
 
   mkdirSync(dirname(ctx.paths.lock), { recursive: true });
   writeFileSync(ctx.paths.lock, String(process.pid));
@@ -41,6 +45,7 @@ export async function tick(ctx: Context, sources: Source<any>[], opts: { force?:
       sources: Object.fromEntries(envelopes.map((e) => [e.source, e.ok])),
     };
     appendFileSync(join(ctx.paths.logs, "ticks.jsonl"), JSON.stringify(line) + "\n");
+    ctx.log("tick", { result: "ran", ms: line.ms });
     return "ran";
   } finally {
     rmSync(ctx.paths.lock, { force: true });

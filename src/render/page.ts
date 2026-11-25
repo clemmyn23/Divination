@@ -141,7 +141,8 @@ ${readFileSync(clientScript, "utf8")}
 <div id="controls">
 <button id="live-toggle" type="button">Pause</button>
 <button id="refresh-now" type="button">Refresh now</button>
-<span id="live-status"></span>
+<button id="live-status" type="button" aria-haspopup="dialog" aria-controls="activity-log"></button>
+<div id="activity-pop" role="status"></div>
 <button id="theme-toggle" type="button" title="Switch between following the system, light and dark">◐ Auto</button>
 </div>
 <div class="masthead">
@@ -154,6 +155,11 @@ ${needsYouBadge(attention.length)}
 ${attentionPanel(attention, stale)}
 ${sections.join("\n")}
 </main>
+<dialog id="activity-log" aria-labelledby="activity-title">
+<h2 id="activity-title">Activity</h2>
+<pre id="activity-lines"></pre>
+<button id="activity-close" type="button">Close</button>
+</dialog>
 </body>
 </html>
 `;

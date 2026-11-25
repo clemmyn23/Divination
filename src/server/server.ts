@@ -2,9 +2,11 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tick } from "../cli/commands/tick.ts";
 import { DONE_KEY_MAX, setDone } from "../core/done.ts";
+import { readEnvelope, transportOf } from "../core/pipeline.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
 import { renderSite } from "../render/site.ts";
+import { createActivity } from "./activity.ts";
 import { createJobs } from "./jobs.ts";
 import { type Timers, createLive } from "./live.ts";
 
@@ -39,6 +41,7 @@ const refuse = (status: number, error: string) => json(status, { error });
 const ROUTES: Record<string, "GET" | "POST"> = {
   "/": "GET",
   "/api/status": "GET",
+  "/api/activity": "GET",
   "/api/live": "POST",
   "/api/tick": "POST",
   "/api/enrich": "POST",
@@ -52,7 +55,30 @@ const ROUTES: Record<string, "GET" | "POST"> = {
  * reaches `enrichOnDemand`. It answers only requests addressed to its own loopback
  * address, and only acts on a POST that carries the token it put in the page.
  */
-export function createApp(ctx: Context, sources: Source<any>[], token: string, timers?: Timers) {
+export function createApp(base: Context, sources: Source<any>[], token: string, timers?: Timers) {
+  // Everything the tool reports through `log` is also kept for the page's activity view.
+  const activity = createActivity(
+    base.now,
+    sources.map((source) => {
+      const envelope = readEnvelope(source, base);
+      return {
+        id: source.id,
+        title: source.title,
+        state: envelope.ok ? ("ok" as const) : ("failed" as const),
+        at: envelope.collectedAt,
+        ...(envelope.ok || !envelope.error ? {} : { error: envelope.error }),
+        ...(transportOf(base.config, source.id) === "inbox" ? { byHand: true } : {}),
+      };
+    }),
+  );
+  const ctx: Context = {
+    ...base,
+    log(event, fields) {
+      base.log(event, fields);
+      activity.record(event, fields);
+    },
+  };
+
   const jobs = createJobs(ctx.now);
   const startedAt = ctx.now(); // changes on every restart, which tells an open page to reload
   const port = ctx.config.server.port;
@@ -70,6 +96,7 @@ export function createApp(ctx: Context, sources: Source<any>[], token: string, t
     ...live.state(),
     renderedAt: existsSync(ctx.paths.site) ? statSync(ctx.paths.site).mtimeMs : 0,
     startedAt,
+    sources: activity.sources(),
     job: jobs.current(),
     lastJob: jobs.last(),
   });
@@ -114,6 +141,9 @@ export function createApp(ctx: Context, sources: Source<any>[], token: string, t
 
       case "/api/status":
         return json(200, status());
+
+      case "/api/activity":
+        return json(200, { lines: activity.lines() });
 
       case "/api/live": {
         if (typeof fields.on !== "boolean") return refuse(400, '"on" must be true or false');

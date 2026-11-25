@@ -29,7 +29,7 @@ export async function enrichOnDemand(
   const cached = items.length - waiting.length;
   if (waiting.length === 0) return { ran: 0, cached };
 
-  ctx.log("enrich", { enricher: enricher.id, items: waiting.length });
+  ctx.log("enrich", { enricher: enricher.id, key, items: waiting.length });
   const outputs = await enricher.run(waiting, ctx);
 
   let ran = 0;

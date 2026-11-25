@@ -120,7 +120,7 @@ test("mascot is in the header with the count", () => {
 
 test("a theme toggle sits with the other controls", () => {
   const html = renderPage({ view, entries: [] });
-  const controls = html.match(/<div id="controls">[\s\S]*?<\/div>/)![0];
+  const controls = html.slice(html.indexOf('<div id="controls">'), html.indexOf('<div class="masthead">'));
   assert.match(controls, /<button id="theme-toggle" type="button"[^>]*>/);
 });
 
@@ -285,4 +285,12 @@ test("a needs-you item that is marked done is neither listed nor counted; the re
   assert.ok(!html.includes("First"));
   assert.ok(html.includes('<li>Second <span class="reason">because</span><button type="button" class="tick" data-done="k:2" data-state="open"'));
   assert.ok(html.includes('<li>Third <span class="reason">because</span></li>'));
+});
+
+test("the status is a button with a hover breakdown beside it and a log dialog behind it", () => {
+  const html = renderPage({ view, entries: [] });
+  assert.ok(html.includes('<button id="live-status" type="button" aria-haspopup="dialog" aria-controls="activity-log"></button>'));
+  assert.ok(html.includes('<div id="activity-pop" role="status"></div>'));
+  assert.match(html, /<dialog id="activity-log" aria-labelledby="activity-title">[\s\S]*<h2 id="activity-title">Activity<\/h2>[\s\S]*<pre id="activity-lines"><\/pre>[\s\S]*<button id="activity-close" type="button">Close<\/button>[\s\S]*<\/dialog>/);
+  assert.ok(html.indexOf('id="activity-pop"') < html.indexOf("</header>")); // the breakdown sits with the controls
 });

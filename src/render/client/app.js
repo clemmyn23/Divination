@@ -35,6 +35,7 @@
   // ---- The local server: live updates, refresh, and the sparkle buttons ----
 
   const POLL_MS = 3000;
+  const FAST_POLL_MS = 1000;
   const el = (id) => document.getElementById(id);
   const enrichButtons = () => document.querySelectorAll("button[data-enrich]");
   const ticks = () => document.querySelectorAll("button[data-done]");
@@ -89,14 +90,63 @@
   let seenStartedAt = null; // when the server that this page first heard from started
   let lastFinishedAt = null; // when the last job we know of finished
   let pending = null; // { button, label, since }: a sparkle button waiting on its job
+  let working = false; // a refresh or a Claude call is running
 
   function setStatus(text) {
     const status = el("live-status");
     if (status) status.textContent = text;
   }
 
-  function clock(ms) {
-    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+  function clock(ms, withSeconds = false) {
+    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", ...(withSeconds ? { second: "2-digit" } : {}), hour12: false });
+  }
+
+  function seconds(ms) {
+    const s = ms / 1000;
+    return `${s >= 10 ? Math.round(s) : Math.round(s * 10) / 10} s`;
+  }
+
+  // ---- Activity: a breakdown of each source on hover, and the log behind a click ----
+
+  // One line per source: is it being read, when was it last read, or why did it fail.
+  function breakdown(sources) {
+    const width = Math.max(0, ...sources.map((s) => s.title.length));
+    return sources
+      .map((s) => {
+        const name = s.title.padEnd(width);
+        if (s.state === "running") return `… ${name}  reading…`;
+        if (s.state === "failed") return `✗ ${name}  failed: ${s.error ?? "unknown error"}`;
+        if (!s.at) return `✓ ${name}  never read`;
+        if (s.byHand) return `✓ ${name}  read by hand at ${clock(s.at)}`;
+        return `✓ ${name}  updated ${clock(s.at)}${typeof s.ms === "number" ? ` in ${seconds(s.ms)}` : ""}`;
+      })
+      .join("\n");
+  }
+
+  const logIsOpen = () => Boolean(el("activity-log")?.open);
+
+  // Each entry is a time and a line; an error is flagged, and any detail lines keep their place under it.
+  async function loadLog() {
+    const lines = el("activity-lines");
+    if (!lines) return;
+    try {
+      const res = await fetch("/api/activity");
+      if (!res.ok) throw new Error(String(res.status));
+      const entries = (await res.json()).lines ?? [];
+      lines.textContent =
+        entries.length === 0
+          ? "Nothing has happened since the server started."
+          : entries
+              .map((entry) => {
+                const [first, ...rest] = entry.text.split("\n");
+                const head = `${clock(entry.at, true)} ${entry.level === "error" ? "! " : " "}${first}`;
+                return [head, ...rest.map((line) => `${" ".repeat(10)}${line}`)].join("\n");
+              })
+              .join("\n");
+      if (typeof lines.scrollHeight === "number") lines.scrollTop = lines.scrollHeight; // newest is last
+    } catch {
+      lines.textContent = "The server is not running, so there is no log to show.";
+    }
   }
 
   function restorePending() {
@@ -122,6 +172,10 @@
     }
 
     const busy = status.job !== null;
+    working = busy;
+    const sources = status.sources ?? [];
+    const pop = el("activity-pop");
+    if (pop) pop.textContent = breakdown(sources);
     const finishedAt = status.lastJob ? status.lastJob.finishedAt : null;
 
     // The pressed button's job is over and the page did not change: give the button back.
@@ -140,7 +194,8 @@
     }
     for (const button of ticks()) button.disabled = false;
 
-    if (busy) setStatus(status.job.name.startsWith("enrich") ? "asking Claude…" : "updating…");
+    const reading = sources.filter((s) => s.state === "running").map((s) => s.title);
+    if (busy) setStatus(status.job.name.startsWith("enrich") ? "asking Claude…" : `updating…${reading.length > 0 ? ` ${reading.join(", ")}` : ""}`);
     else if (status.lastJob && !status.lastJob.ok) setStatus(`failed: ${status.lastJob.error}`);
     else if (!status.live) setStatus("paused");
     else setStatus(status.nextTickAt ? `next update ${clock(status.nextTickAt)}` : "live");
@@ -149,6 +204,7 @@
   // The page was opened as a file, or the server has stopped.
   function showOffline() {
     online = false;
+    working = false;
     restorePending();
     for (const id of ["live-toggle", "refresh-now"]) {
       const button = el(id);
@@ -167,6 +223,7 @@
     } catch {
       showOffline();
     }
+    if (logIsOpen()) await loadLog();
   }
 
   // Every action goes out with the token the server put in this page.
@@ -203,6 +260,8 @@
     restoreView();
     poll();
     setInterval(poll, POLL_MS);
+    // While something is running, or the log is open, look every second so progress is seen as it happens.
+    setInterval(() => (working || logIsOpen() ? poll() : undefined), FAST_POLL_MS);
   });
 
   document.addEventListener("click", async (event) => {
@@ -232,6 +291,18 @@
       setTimeout(() => {
         copy.textContent = label;
       }, 1500);
+      return;
+    }
+
+    // The status opens the activity log. It works with the server down too, to say so.
+    if (target.closest("#live-status")) {
+      const dialog = el("activity-log");
+      if (dialog && !dialog.open) dialog.showModal();
+      await loadLog();
+      return;
+    }
+    if (target.closest("#activity-close")) {
+      el("activity-log")?.close();
       return;
     }
 

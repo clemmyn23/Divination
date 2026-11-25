@@ -39,6 +39,7 @@ interface Status {
   nextTickAt: number | null;
   renderedAt: number;
   startedAt: number;
+  sources?: { id: string; title: string; state: string; at: number; ms?: number; error?: string; byHand?: boolean }[];
   job: { name: string; startedAt: number } | null;
   lastJob: { name: string; ok: boolean; error?: string; finishedAt: number } | null;
 }
@@ -61,6 +62,17 @@ function page(stored: string | null, opts: Options = {}) {
     "live-toggle": new FakeElement("live-toggle", "Pause"),
     "refresh-now": new FakeElement("refresh-now", "Refresh now"),
     "live-status": new FakeElement("live-status", ""),
+    "activity-pop": new FakeElement("activity-pop", ""),
+    "activity-log": new FakeElement("activity-log", ""),
+    "activity-lines": new FakeElement("activity-lines", ""),
+    "activity-close": new FakeElement("activity-close", "Close"),
+  };
+  const dialog = elements["activity-log"]! as FakeElement & { showModal(): void; close(): void };
+  dialog.showModal = () => {
+    dialog.open = true;
+  };
+  dialog.close = () => {
+    dialog.open = false;
   };
   const draft = new FakeElement("draft-1", "Draft review");
   draft.dataset.enrich = "pr-review";
@@ -82,6 +94,7 @@ function page(stored: string | null, opts: Options = {}) {
   let parsed = false; // the script runs in <head>, before the buttons exist
 
   const server = {
+    activity: [] as { at: number; level: string; text: string }[],
     status: opts.status === undefined ? LIVE : opts.status,
     postStatus: 200,
     requests: [] as { url: string; method: string; headers: Record<string, string>; body: unknown }[],
@@ -105,6 +118,7 @@ function page(stored: string | null, opts: Options = {}) {
         if (url === "/api/live") server.status = { ...server.status, live: (JSON.parse(init.body!) as { on: boolean }).on, nextTickAt: null };
         if (url === "/api/done") server.status = { ...server.status, renderedAt: server.status.renderedAt + 1 }; // the server redraws the page
       }
+      if (url === "/api/activity") return { ok: true, status: 200, json: async () => ({ lines: server.activity }) };
       return { ok: true, status: 200, json: async () => server.status };
     },
     sessionStorage: {
@@ -159,6 +173,10 @@ function page(stored: string | null, opts: Options = {}) {
     liveToggle: elements["live-toggle"]!,
     refreshNow: elements["refresh-now"]!,
     liveStatus: elements["live-status"]!,
+    pop: elements["activity-pop"]!,
+    dialog,
+    logLines: elements["activity-lines"]!,
+    closeLog: elements["activity-close"]!,
     themeBeforeParse: root.dataset.theme,
     get reloads() {
       return reloads;
@@ -254,7 +272,7 @@ test("while live the button offers Pause and the status says when the next updat
   assert.equal(p.liveToggle.textContent, "Pause");
   assert.match(p.liveStatus.textContent, /^next update \d\d:\d\d$/);
   assert.deepEqual(p.server.requests.map((r) => [r.method, r.url]), [["GET", "/api/status"]]);
-  assert.deepEqual(p.intervals.map((i) => i.ms), [3000]);
+  assert.deepEqual(p.intervals.map((i) => i.ms), [3000, 1000]); // the slow poll, and a fast one for while something is running
 });
 
 test("while paused the button offers Start", async () => {
@@ -451,4 +469,71 @@ test("with nothing remembered, or storage blocked or holding junk, the page stil
   await blocked.finishParsing();
   await blocked.click(blocked.tick);
   assert.equal(blocked.reloads, 1);
+});
+
+// Activity: the breakdown on hover and the log behind a click
+
+const at = (iso: string) => Date.parse(iso);
+const SOURCES = [
+  { id: "calendar", title: "Today", state: "ok", at: at("2026-11-25T04:11:00Z"), byHand: true },
+  { id: "github", title: "Review queue", state: "running", at: at("2026-11-25T05:00:00Z") },
+  { id: "slack", title: "Slack", state: "failed", at: 0, ms: 40, error: "inbox file missing", byHand: true },
+  { id: "extra", title: "Extra", state: "ok", at: at("2026-11-25T05:24:00Z"), ms: 1234 },
+];
+
+test("the breakdown lists every source: reading, read and when, read by hand, or failed and why", async () => {
+  const p = page(null, { status: { ...LIVE, job: { name: "tick", startedAt: 1 }, sources: SOURCES } });
+  await p.finishParsing();
+  const lines = p.pop.textContent.split("\n");
+  assert.equal(lines.length, 4);
+  assert.match(lines[0]!, /^✓ Today +read by hand at \d\d:\d\d$/);
+  assert.match(lines[1]!, /^… Review queue +reading…$/);
+  assert.match(lines[2]!, /^✗ Slack +failed: inbox file missing$/);
+  assert.match(lines[3]!, /^✓ Extra +updated \d\d:\d\d in 1\.2 s$/);
+  assert.equal(p.liveStatus.textContent, "updating… Review queue");
+});
+
+test("with nothing to break down, the breakdown is empty and the status reads as before", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  assert.equal(p.pop.textContent, "");
+  assert.match(p.liveStatus.textContent, /^next update /);
+});
+
+test("clicking the status opens the log, newest last, with a time on each entry and its detail kept", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.server.activity = [
+    { at: at("2026-11-25T05:00:00Z"), level: "info", text: "Refresh started (Refresh now)" },
+    { at: at("2026-11-25T05:00:42Z"), level: "error", text: "Claude (haiku) failed in 0.1 s\n  claude failed: Failed to authenticate" },
+  ];
+  await p.click(p.liveStatus);
+  assert.equal(p.dialog.open, true);
+  assert.ok(p.server.requests.some((r) => r.url === "/api/activity" && r.method === "GET"));
+  const text = p.logLines.textContent.split("\n");
+  assert.match(text[0]!, /^\d\d:\d\d:\d\d  Refresh started \(Refresh now\)$/);
+  assert.match(text[1]!, /^\d\d:\d\d:\d\d ! Claude \(haiku\) failed in 0\.1 s$/);
+  assert.equal(text[2], "            claude failed: Failed to authenticate");
+
+  await p.click(p.closeLog);
+  assert.equal(p.dialog.open, false);
+});
+
+test("an empty log says so, and the open log keeps itself up to date", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  assert.equal(p.logLines.textContent, "Nothing has happened since the server started.");
+
+  p.server.activity = [{ at: at("2026-11-25T05:00:00Z"), level: "info", text: "Refresh started (timer)" }];
+  await p.poll();
+  assert.match(p.logLines.textContent, /Refresh started \(timer\)$/);
+});
+
+test("with the server down the status still opens the log, which says it cannot be read", async () => {
+  const p = page(null, { status: null });
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  assert.equal(p.dialog.open, true);
+  assert.equal(p.logLines.textContent, "The server is not running, so there is no log to show.");
 });

@@ -117,3 +117,14 @@ test("the tick command says what happened", async () => {
   }
   assert.deepEqual(out.lines, ["ran", "outside-hours", "ran"]);
 });
+
+test("a refresh is logged when it starts and when it ends, saying how it was started and how it went", async () => {
+  const logged: [string, Record<string, unknown>][] = [];
+  const ctx = contextWith({ sources: ["fake"] }, { log: (event, fields) => logged.push([event, { ...(fields as object) }]) });
+  assert.equal(await tick(ctx, [fakeSource()], { force: true }), "ran");
+  const events = logged.map(([event]) => event);
+  assert.deepEqual([events[0], events.at(-1)], ["tick-start", "tick"]);
+  assert.deepEqual(logged[0]![1], { forced: true });
+  assert.equal(logged.at(-1)![1].result, "ran");
+  assert.equal(typeof logged.at(-1)![1].ms, "number");
+});

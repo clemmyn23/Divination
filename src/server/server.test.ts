@@ -84,7 +84,8 @@ test("posts without the token are refused and do nothing", async () => {
 test("status reports the timer, the page and the jobs", async () => {
   const { status, body } = await json(req("GET", "/api/status"));
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body).sort(), ["job", "lastJob", "live", "nextTickAt", "renderedAt", "startedAt"]);
+  assert.deepEqual(Object.keys(body).sort(), ["job", "lastJob", "live", "nextTickAt", "renderedAt", "sources", "startedAt"]);
+  assert.deepEqual(body.sources.map((x: { id: string; title: string; state: string }) => [x.id, x.title, x.state]), [["fake", "Fake", "ok"]]);
   assert.equal(body.startedAt, ctx.now());
   assert.deepEqual([body.live, body.nextTickAt, body.job, body.lastJob], [true, null, null, null]);
 });
@@ -174,4 +175,32 @@ test("a done mark needs the token, a key and a yes or no", async () => {
     assert.equal((await app.handle(req("POST", "/api/done", { body: JSON.stringify(bad) }))).status, 400, JSON.stringify(bad));
   }
   assert.deepEqual(readDone(ctx), {});
+});
+
+// Activity: what a refresh or a Claude call is doing, and what it did
+
+test("a refresh shows each source's progress in status and leaves a story in the activity log", async () => {
+  assert.equal((await json(req("POST", "/api/tick"))).status, 202);
+  await settle();
+  const { body } = await json(req("GET", "/api/status"));
+  assert.equal(body.sources[0].state, "ok");
+  assert.equal(typeof body.sources[0].ms, "number");
+
+  const log = await json(req("GET", "/api/activity"));
+  assert.equal(log.status, 200);
+  const texts = log.body.lines.map((l: { text: string }) => l.text);
+  assert.equal(texts[0], "Refresh started (Refresh now)");
+  assert.ok(texts.includes("Fake: reading…"));
+  assert.ok(texts.some((t: string) => /^Fake: ok in /.test(t)));
+  assert.ok(texts.some((t: string) => /^Refresh finished in /.test(t)));
+  assert.ok(log.body.lines.every((l: { at: number; level: string }) => typeof l.at === "number" && ["info", "error"].includes(l.level)));
+});
+
+test("asking for enrichment is in the activity log, and the log needs the right host but no token", async () => {
+  await json(req("POST", "/api/enrich", { body: JSON.stringify({ enricher: "fake-enricher", key: "a" }) }));
+  await settle();
+  const log = await json(req("GET", "/api/activity"));
+  assert.ok(log.body.lines.some((l: { text: string }) => l.text === "Asked for fake-enricher on a (1 item)"));
+  assert.equal((await app.handle(req("GET", "/api/activity", { headers: { host: "evil.example" } }))).status, 403);
+  assert.equal((await app.handle(req("POST", "/api/activity"))).status, 405);
 });

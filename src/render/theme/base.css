@@ -103,10 +103,19 @@ h1 {
   color: var(--accent);
 }
 
+/* The status is a quiet button: hover for a breakdown of each source, click for the log. */
 #live-status {
   order: -1;
+  padding: 4px 6px;
+  border: 0;
   font-size: 12px;
+  font-weight: 500;
   color: var(--ink-soft);
+  background: transparent;
+}
+
+#live-status:hover:not(:disabled) {
+  color: var(--accent);
 }
 
 #live-status:empty {
@@ -156,6 +165,68 @@ button[data-enrich] {
 
 button[data-enrich]::before {
   content: "✨ ";
+}
+
+#controls {
+  position: relative;
+}
+
+#activity-pop {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  padding: 8px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 10px;
+  font: 12px/1.6 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre;
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+#live-status:hover + #activity-pop:not(:empty),
+#live-status:focus-visible + #activity-pop:not(:empty) {
+  display: block;
+}
+
+#activity-log {
+  width: min(900px, 92vw);
+  max-height: 82vh;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+
+#activity-log::backdrop {
+  background: rgba(20, 14, 34, 0.55);
+}
+
+#activity-log h2 {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 13.5px;
+  background: var(--lilac);
+}
+
+#activity-lines {
+  margin: 0;
+  padding: 10px 14px;
+  max-height: 62vh;
+  overflow: auto;
+  font: 12px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#activity-close {
+  display: block;
+  margin: 8px 14px 12px auto;
 }
 
 /* The mascot: a small, soft crystal ball. */
