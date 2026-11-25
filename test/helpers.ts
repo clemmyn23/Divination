@@ -79,9 +79,14 @@ export function captureLog(): { lines: string[]; restore(): void } {
   };
 }
 
+function isWithHeaders(v: unknown): v is { $data: unknown; $headers: Record<string, string> } {
+  return typeof v === "object" && v !== null && "$data" in v && "$headers" in v;
+}
+
 /**
  * An Http that answers from a table. A request matches the longest route key its URL
  * starts with. A function value is called with the URL. An unknown URL throws.
+ * An answer that is an Error is thrown; `{ $data, $headers }` sets response headers.
  */
 export function fakeHttp(routes: Record<string, unknown | ((url: string) => unknown)>): Http & { calls: string[] } {
   const calls: string[] = [];
@@ -93,8 +98,10 @@ export function fakeHttp(routes: Record<string, unknown | ((url: string) => unkn
       const key = keys.find((k) => url.startsWith(k));
       if (key === undefined) throw new Error(`fakeHttp: no route for ${url}`);
       const value = routes[key];
-      const data = typeof value === "function" ? (value as (url: string) => unknown)(url) : value;
-      return { data: data as T, headers: new Headers() };
+      const answer = typeof value === "function" ? (value as (url: string) => unknown)(url) : value;
+      if (answer instanceof Error) throw answer;
+      if (isWithHeaders(answer)) return { data: answer.$data as T, headers: new Headers(answer.$headers) };
+      return { data: answer as T, headers: new Headers() };
     },
   };
 }
