@@ -1,6 +1,6 @@
 import { ConfigError } from "./config.ts";
 import { readJson, writeJson } from "./store.ts";
-import type { Config, Context, Envelope, Source } from "./types.ts";
+import type { Config, Context, Envelope, Source, View } from "./types.ts";
 
 /** The sources named in `config.sources`, in that order. */
 export function enabledSources(config: Config, all: Source<any>[]): Source<any>[] {
@@ -66,6 +66,11 @@ export async function collectSource(source: Source<any>, ctx: Context): Promise<
   writeJson(ctx.paths.data(source.id), envelope);
   ctx.log("collect", { source: source.id, ok: envelope.ok, ...(envelope.error ? { error: envelope.error } : {}) });
   return envelope;
+}
+
+/** What panels are drawn from: the clock, the config and any cached enrichment (none until Task 12). */
+export function buildView(ctx: Context, _sources: Source<any>[]): View {
+  return { now: ctx.now(), config: ctx.config, enrich: {} };
 }
 
 /** Collect every source. One failing source does not stop the others. */

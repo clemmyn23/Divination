@@ -2,9 +2,10 @@ import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { loadConfig } from "../src/core/config.ts";
 import { createContext } from "../src/core/context.ts";
 import { createSecrets } from "../src/core/secrets.ts";
-import type { Context, Exec, Http, Source } from "../src/core/types.ts";
+import type { AttentionItem, Context, Envelope, Exec, Http, Source, View } from "../src/core/types.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,6 +50,19 @@ export function fakeSource(over: Partial<Source<any>> = {}): Source<any> {
     ...over,
   };
 }
+
+/** An ok envelope for source `fake`. */
+export function ok(data: unknown, collectedAt: number = NOW): Envelope<unknown> {
+  return { source: "fake", ok: true, collectedAt, attemptedAt: collectedAt, data };
+}
+
+/** An attention item whose only interesting part is its key. */
+export function item(key: string): AttentionItem {
+  return { key, title: `Item ${key}`, reason: "because" };
+}
+
+/** A view at NOW with the default config and nothing enriched. */
+export const view: View = { now: NOW, config: loadConfig(tempRoot()), enrich: {} };
 
 /** Collect what a command prints with console.log. Call `restore()` when done. */
 export function captureLog(): { lines: string[]; restore(): void } {

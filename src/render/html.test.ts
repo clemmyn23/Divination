@@ -1,0 +1,25 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { esc, link, safeUrl } from "./html.ts";
+
+test("only https links", () => {
+  for (const bad of ["http://x.example/a", "javascript:alert(1)", "file:///etc/passwd", "//x.example", 7, undefined]) {
+    assert.equal(safeUrl(bad), undefined);
+  }
+  assert.equal(safeUrl("https://x.example/a"), "https://x.example/a");
+  assert.equal(link("a<b", "javascript:alert(1)"), "a&lt;b");
+  assert.equal(link("a<b", 'https://x.example/?q="1"'), '<a href="https://x.example/?q=&quot;1&quot;">a&lt;b</a>');
+});
+
+test("https in another case or with leading space is not trusted", () => {
+  assert.equal(safeUrl(" https://x.example"), undefined);
+  assert.equal(safeUrl("HTTPS://x.example"), undefined);
+  assert.equal(safeUrl("https://"), undefined);
+});
+
+test("esc covers the five characters and copes with non-strings", () => {
+  assert.equal(esc(`<a href="x" title='y'>&</a>`), "&lt;a href=&quot;x&quot; title=&#39;y&#39;&gt;&amp;&lt;/a&gt;");
+  assert.equal(esc(undefined), "");
+  assert.equal(esc(null), "");
+  assert.equal(esc(42), "42");
+});
