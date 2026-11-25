@@ -35,7 +35,7 @@ test("attention items link only to https and a source without data adds none", (
     ],
   });
   const html = renderPage({ view, entries: [{ source: src, envelope: ok({}) }] });
-  assert.ok(html.includes('<a href="https://x.example/1">Safe</a>'));
+  assert.ok(html.includes('<a href="https://x.example/1" target="_blank" rel="noopener noreferrer">Safe</a>'));
   assert.ok(!html.includes("javascript:alert(1)"));
 
   const empty = { source: "fake", ok: false, error: "never collected", collectedAt: 0, attemptedAt: 0, data: null };
@@ -148,7 +148,7 @@ test("the needs-you list is its own short panel, not part of the header", () => 
   assert.ok(!header.includes("Reply to Ana"));
   assert.ok(header.includes("<strong>1</strong>"));
   const aside = html.match(/<aside id="attention" class="panel tint-accent" data-size="short">[\s\S]*?<\/aside>/)![0];
-  assert.ok(aside.includes('<a href="https://x.example/1">Reply to Ana</a>'));
+  assert.ok(aside.includes('<a href="https://x.example/1" target="_blank" rel="noopener noreferrer">Reply to Ana</a>'));
   assert.ok(html.indexOf('<aside id="attention"') < html.indexOf("<section"));
 });
 

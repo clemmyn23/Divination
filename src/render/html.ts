@@ -19,8 +19,11 @@ export function safeUrl(u: unknown): string | undefined {
   return u;
 }
 
-/** A link when the URL is safe, otherwise just the escaped text. */
+/**
+ * A link when the URL is safe, otherwise just the escaped text. Every link opens in a
+ * new tab, so the dashboard stays put, and the page it opens gets no handle back to it.
+ */
 export function link(text: string, url: unknown): string {
   const safe = safeUrl(url);
-  return safe ? `<a href="${esc(safe)}">${esc(text)}</a>` : esc(text);
+  return safe ? `<a href="${esc(safe)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>` : esc(text);
 }

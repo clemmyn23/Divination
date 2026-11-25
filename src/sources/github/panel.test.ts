@@ -58,7 +58,7 @@ test("the panel is one blush panel called the review queue", () => {
 
 test("each PR is a title and one meta line", () => {
   const html = githubPanels(DATA, view)[0]!.html;
-  assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/1">Change 1</a>'));
+  assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/1" target="_blank" rel="noopener noreferrer">Change 1</a>'));
   assert.ok(
     html.includes(
       '<p class="meta">o/r#1 · ann · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · touches billing</p>',

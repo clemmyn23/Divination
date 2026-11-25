@@ -8,7 +8,12 @@ test("only https links", () => {
   }
   assert.equal(safeUrl("https://x.example/a"), "https://x.example/a");
   assert.equal(link("a<b", "javascript:alert(1)"), "a&lt;b");
-  assert.equal(link("a<b", 'https://x.example/?q="1"'), '<a href="https://x.example/?q=&quot;1&quot;">a&lt;b</a>');
+  assert.equal(link("a<b", 'https://x.example/?q="1"'), '<a href="https://x.example/?q=&quot;1&quot;" target="_blank" rel="noopener noreferrer">a&lt;b</a>');
+});
+
+test("every link opens in a new tab and gives the new page no handle on this one", () => {
+  const html = link("PR", "https://x.example/pr/1");
+  assert.equal(html, '<a href="https://x.example/pr/1" target="_blank" rel="noopener noreferrer">PR</a>');
 });
 
 test("https in another case or with leading space is not trusted", () => {
