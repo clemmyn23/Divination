@@ -19,9 +19,13 @@ export function renderCommand(getCtx: () => Context, all: Source<any>[]): Comman
       const ctx = getCtx();
 
       if (args.includes("--fixtures")) {
-        const sample = (await import(sampleModule)) as { fixtureEntries(now: number): PageEntry[] };
+        const sample = (await import(sampleModule)) as {
+          fixtureEntries(now: number): PageEntry[];
+          fixtureEnrich?(): Record<string, Record<string, unknown>>;
+        };
         const path = join(dirname(ctx.paths.site), "fixture.html");
-        writePage(path, renderPage({ view: buildView(ctx, []), entries: sample.fixtureEntries(ctx.now()) }));
+        const view = { ...buildView(ctx, []), enrich: sample.fixtureEnrich?.() ?? {} };
+        writePage(path, renderPage({ view, entries: sample.fixtureEntries(ctx.now()) }));
         console.log(path);
         return 0;
       }

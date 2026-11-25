@@ -48,7 +48,8 @@ test("a PR carries what the search and the PR itself say about it", async () => 
       ci: "pass",
       request: "ambiguous",
       reviewedByMeAtHead: false,
-      rank: { score: 0, bucket: "review_now", reasons: [] },
+      // 15 changed lines, no risky paths, green CI, opened 4 days before NOW
+      rank: { score: 2, bucket: "quick_win", reasons: ["quick win", "4 days old", "CI passing"] },
     },
   );
   assert.deepEqual(pr!.paths, ["src/app.ts", "src/app.test.ts"]);
@@ -124,7 +125,10 @@ test("my own review at the head commit is noticed; an older one is not", async (
   const mine = { ...PR1, reviews: [{ user: { login: "me" }, commit_id: "aaa111", state: "COMMENTED" }] };
   const stale = { ...PR2, reviews: [{ user: { login: "me" }, commit_id: "old000", state: "APPROVED" }, { user: { login: "ann" }, commit_id: "bbb222", state: "COMMENTED" }] };
   const { ctx } = setup(githubRoutes([mine, stale]));
-  assert.deepEqual((await collectGithub(ctx)).prs.map((p) => p.reviewedByMeAtHead), [true, false]);
+  const byKey = Object.fromEntries((await collectGithub(ctx)).prs.map((p) => [p.key, p]));
+  assert.equal(byKey["o/r#1"]!.reviewedByMeAtHead, true);
+  assert.equal(byKey["o/r#1"]!.rank.bucket, "excluded"); // and so it drops out of what needs me
+  assert.equal(byKey["o/r#2"]!.reviewedByMeAtHead, false);
 });
 
 test("a draft is carried through", async () => {

@@ -3,6 +3,8 @@
 // as that source lands.
 
 import type { Envelope, Panel, Source } from "../../../src/core/types.ts";
+import { github } from "../../../src/sources/github/index.ts";
+import type { Bucket, Ci, GithubData, PullRequest, Request } from "../../../src/sources/github/types.ts";
 
 interface Entry {
   source: Source<any>;
@@ -39,56 +41,77 @@ const today: Panel = {
 </ul>`,
 };
 
-const prs: Panel = {
-  id: "prs",
-  title: "Review queue",
-  tint: "blush",
-  html: `<h3 class="group">Needs you · 4</h3>
-<ul class="items">
-<li class="item pr needs-you"><a href="https://git.example.com/o/app/pull/412">Move invoice totals to the new tax service</a>
-<p class="meta">o/app#412 · ana · +640 −210 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · billing, large, 4d</p>
-<details class="review">
-<summary>Draft: comment · 1 note</summary>
-<p>The move is sound. One rounding path still uses the old helper.</p>
-<div class="finding">
-<p class="where">src/billing/totals.ts:88 · should-fix</p>
-<pre>\`roundHalfUp\` here still comes from the old helper, so totals can differ by a cent from the tax service. Use \`tax.round()\` instead.</pre>
-<button type="button" data-copy="roundHalfUp here still comes from the old helper.">Copy comment</button>
-</div>
-</details></li>
-<li class="item pr needs-you"><a href="https://git.example.com/o/app/pull/418">Add keyboard support to the date picker</a>
-<p class="meta">o/app#418 · kit · +180 −35 · <span class="ci-pending">CI …</span> · <span class="tag">direct</span> · 1d</p>
-<button type="button" data-enrich="pr-review" data-key="o/app#418@abc123">Draft review</button></li>
-<li class="item pr needs-you"><a href="https://git.example.com/o/app/pull/421">Fix typo in empty state</a>
-<p class="meta">o/app#421 · sam-b · +2 −2 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · quick win</p>
-<button type="button" data-enrich="pr-review" data-key="o/app#421@def456">Draft review</button></li>
-<li class="item pr needs-you"><a href="https://git.example.com/o/app/pull/423">Show a spinner while the audience list loads</a>
-<p class="meta">o/app#423 · lee · +64 −9 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · quick win</p>
-<button type="button" data-enrich="pr-review" data-key="o/app#423@aa11bb">Draft review</button></li>
-</ul>
-<h3 class="group">Waiting on authors · 3</h3>
-<ul class="items">
-<li class="item pr"><a href="https://git.example.com/o/app/pull/397">Rate-limit the export endpoint</a>
-<p class="meta">o/app#397 · rio · +95 −12 · <span class="ci-fail">CI ✗</span> · <span class="tag">team</span> · CI failing</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/402">Split the campaign editor bundle</a>
-<p class="meta">o/app#402 · mo · +410 −388 · <span class="ci-fail">CI ✗</span> · <span class="tag">rotation</span> · CI failing, 6d</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/405">Retry webhook deliveries with backoff</a>
-<p class="meta">o/app#405 · jo · +220 −40 · <span class="ci-fail">CI ✗</span> · <span class="tag">team</span> · sending, CI failing</p></li>
-</ul>
-<h3 class="group">Covered or low priority · 5</h3>
-<ul class="items">
-<li class="item pr"><a href="https://git.example.com/o/app/pull/409">Update the contributing guide</a>
-<p class="meta">o/app#409 · lee · +40 −8 · <span class="ci-pass">CI ✓</span> · <span class="tag">team</span> · docs only</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/415">Swap the chart library</a>
-<p class="meta">o/app#415 · mo · +1,210 −980 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · picked up by Ana</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/416">Bump the linter and fix new warnings</a>
-<p class="meta">o/app#416 · bot · +310 −300 · <span class="ci-pass">CI ✓</span> · <span class="tag">team</span> · not for this crew</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/419">Rename the feature flag helper</a>
-<p class="meta">o/app#419 · kit · +58 −58 · <span class="ci-pass">CI ✓</span> · <span class="tag">team</span> · already reviewed</p></li>
-<li class="item pr"><a href="https://git.example.com/o/app/pull/420">Draft: new onboarding checklist</a>
-<p class="meta">o/app#420 · ana · +900 −20 · <span class="ci-pending">CI …</span> · <span class="tag">direct</span> · draft</p></li>
-</ul>`,
+// The review queue is drawn by the real GitHub source from this invented data.
+function pr(
+  number: number,
+  title: string,
+  author: string,
+  size: [number, number],
+  ci: Ci,
+  request: Request,
+  bucket: Bucket,
+  reasons: string[],
+  score = 0,
+): PullRequest {
+  return {
+    key: `o/app#${number}`,
+    repo: "o/app",
+    number,
+    title,
+    url: `https://git.example.com/o/app/pull/${number}`,
+    author,
+    headSha: `sha${number}`,
+    createdAt: 0,
+    updatedAt: 0,
+    draft: bucket === "excluded" && reasons[0] === "draft",
+    additions: size[0],
+    deletions: size[1],
+    changedFiles: 3,
+    paths: [],
+    ci,
+    request,
+    reviewedByMeAtHead: false,
+    rank: { score, bucket, reasons },
+  };
+}
+
+const queue: GithubData = {
+  login: "sam",
+  prs: [
+    pr(412, "Move invoice totals to the new tax service", "ana", [640, 210], "pass", "rotation", "review_now", ["touches billing", "large change", "rotation", "4 days old", "CI passing"], 9),
+    pr(418, "Add keyboard support to the date picker", "kit", [180, 35], "pending", "direct", "review_now", [], 0),
+    pr(421, "Fix typo in empty state", "sam-b", [2, 2], "pass", "rotation", "quick_win", ["quick win", "rotation", "CI passing"], 3),
+    pr(423, "Show a spinner while the audience list loads", "lee", [64, 9], "pass", "rotation", "quick_win", ["quick win", "rotation", "CI passing"], 3),
+    pr(397, "Rate-limit the export endpoint", "rio", [95, 12], "fail", "team", "blocked", ["CI failing"], 0),
+    pr(402, "Split the campaign editor bundle", "mo", [410, 388], "fail", "rotation", "blocked", ["CI failing", "rotation", "6 days old"], 3),
+    pr(405, "Retry webhook deliveries with backoff", "jo", [220, 40], "fail", "team", "blocked", ["CI failing", "touches sending"], 2),
+    pr(409, "Update the contributing guide", "lee", [40, 8], "pass", "team", "skip", ["docs only", "CI passing"], 1),
+    pr(415, "Swap the chart library", "mo", [1210, 980], "pass", "rotation", "skip", ["already picked up by Ana", "large change", "rotation", "CI passing"], 5),
+    pr(416, "Bump the linter and fix new warnings", "bot", [310, 300], "pass", "team", "skip", ["not for this crew (:octagonal_sign:)", "CI passing"], 1),
+    pr(419, "Rename the feature flag helper", "kit", [58, 58], "pass", "team", "excluded", ["already reviewed", "CI passing"], 1),
+    pr(420, "New onboarding checklist", "ana", [900, 20], "pending", "direct", "excluded", ["draft", "large change"], 2),
+  ],
 };
+
+/** Enrichment already in the cache for the sample page: one drafted review. */
+export function fixtureEnrich(): Record<string, Record<string, unknown>> {
+  return {
+    "pr-review": {
+      "o/app#412@sha412": {
+        verdict: "comment",
+        summary: "The move is sound. One rounding path still uses the old helper.",
+        findings: [
+          {
+            file: "src/billing/totals.ts",
+            line: "88",
+            severity: "should-fix",
+            comment: "`roundHalfUp` here still comes from the old helper, so totals can differ by a cent from the tax service. Use `tax.round()` instead.",
+          },
+        ],
+      },
+    },
+  };
+}
 
 const slack: Panel = {
   id: "slack",
@@ -155,7 +178,7 @@ const alerts: Panel = {
 <p class="quiet">Quiet today: #crm-alerts, #ucf-alerts, #ucf-alerts-dev, #partner-alerting</p>`,
 };
 
-function envelope(id: string, collectedAt: number, error?: string): Envelope<unknown> {
+function envelope(id: string, collectedAt: number, error?: string): Envelope<any> {
   return { source: id, ok: error === undefined, ...(error ? { error } : {}), collectedAt, attemptedAt: collectedAt, data: {} };
 }
 
@@ -164,15 +187,7 @@ export function fixtureEntries(now: number): Entry[] {
   const minute = 60_000;
   return [
     { source: standIn("calendar", "Today", [today]), envelope: envelope("calendar", now - 4 * minute) },
-    {
-      source: standIn("github", "Review queue", [prs], () => [
-        { key: "o/app#412", title: "Move invoice totals to the new tax service", reason: "touches billing, rotation", url: "https://git.example.com/o/app/pull/412" },
-        { key: "o/app#418", title: "Add keyboard support to the date picker", reason: "direct request", url: "https://git.example.com/o/app/pull/418" },
-        { key: "o/app#421", title: "Fix typo in empty state", reason: "quick win", url: "https://git.example.com/o/app/pull/421" },
-        { key: "o/app#423", title: "Show a spinner while the audience list loads", reason: "quick win", url: "https://git.example.com/o/app/pull/423" },
-      ]),
-      envelope: envelope("github", now - 4 * minute),
-    },
+    { source: github, envelope: { ...envelope("github", now - 4 * minute), data: queue } },
     {
       source: standIn("slack", "Slack", [slack], () => [
         { key: "C1:1", title: "#team-dev", reason: "mentioned you", url: "https://example.slack.com/archives/C1/p1" },

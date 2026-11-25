@@ -1,6 +1,8 @@
 import { readJson, writeJson } from "../../core/store.ts";
 import type { Context } from "../../core/types.ts";
+import { classifyRequest } from "./classify.ts";
 import { type Github, createGithub } from "./client.ts";
+import { rankPull, sortPulls } from "./rank.ts";
 import type { CheckRun, Ci, CombinedStatus, Facts, GithubData, PullRequest, QueueHit } from "./types.ts";
 
 const AT_ONCE = 5;
@@ -45,8 +47,8 @@ async function fetchFacts(gh: Github, hit: QueueHit, login: string): Promise<Fac
 }
 
 /**
- * The open PRs waiting on my review, with their facts. Facts are cached per PR and only
- * fetched again when the PR's `updated_at` moves; CI is asked for every time.
+ * The open PRs waiting on my review, tagged, ranked and sorted. Facts are cached per PR
+ * and only fetched again when the PR's `updated_at` moves; CI is asked for every time.
  */
 export async function collectGithub(ctx: Context): Promise<GithubData> {
   const gh = createGithub(ctx);
@@ -64,7 +66,7 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
 
     const { runs, combined } = await gh.ci(hit.repo, facts.headSha);
 
-    return {
+    const pr: Omit<PullRequest, "rank"> = {
       key: hit.key,
       repo: hit.repo,
       number: hit.number,
@@ -80,12 +82,12 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
       changedFiles: facts.changedFiles,
       paths: facts.paths,
       ci: ciState(runs, combined),
-      request: "ambiguous",
+      request: classifyRequest(facts.requests, login, ctx.config.github.rotationTeam),
       reviewedByMeAtHead: facts.reviewedByMeAtHead,
-      rank: { score: 0, bucket: "review_now", reasons: [] },
     };
+    return { ...pr, rank: rankPull(pr, ctx.config.github.rank, login, ctx.now()) };
   });
 
   writeJson(cachePath, kept);
-  return { login, prs };
+  return { login, prs: sortPulls(prs) };
 }

@@ -1,6 +1,7 @@
 import type { Check, Context, Source } from "../../core/types.ts";
 import { createGithub } from "./client.ts";
 import { collectGithub } from "./collect.ts";
+import { NEEDS_YOU, githubPanels } from "./panel.ts";
 import type { GithubData } from "./types.ts";
 
 function validate(data: unknown): string[] {
@@ -47,7 +48,9 @@ export const github: Source<GithubData> = {
   doctor,
   collect: collectGithub,
   validate,
-  // Task 7 adds the ranking, the needs-you items and the panel.
-  attention: () => [],
-  panels: () => [],
+  attention: (data) =>
+    data.prs
+      .filter((pr) => NEEDS_YOU.includes(pr.rank.bucket))
+      .map((pr) => ({ key: pr.key, title: pr.title, reason: pr.rank.reasons.join(", "), url: pr.url })),
+  panels: githubPanels,
 };
