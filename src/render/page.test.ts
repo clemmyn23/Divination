@@ -291,7 +291,7 @@ test("the status is a button with a hover breakdown beside it and a log dialog b
   const html = renderPage({ view, entries: [] });
   assert.ok(html.includes('<button id="live-status" type="button" aria-haspopup="dialog" aria-controls="activity-log"></button>'));
   assert.ok(html.includes('<div id="activity-pop" role="status"></div>'));
-  assert.match(html, /<dialog id="activity-log" aria-labelledby="activity-title">[\s\S]*<h2 id="activity-title">Activity<\/h2>[\s\S]*<pre id="activity-lines"><\/pre>[\s\S]*<button id="activity-close" type="button">Close<\/button>[\s\S]*<\/dialog>/);
+  assert.match(html, /<dialog id="activity-log" aria-labelledby="activity-title">[\s\S]*<h2 id="activity-title">Activity <span id="activity-live"><\/span><\/h2>[\s\S]*<pre id="activity-lines"><\/pre>[\s\S]*<button id="activity-close" type="button">Close<\/button>[\s\S]*<\/dialog>/);
   assert.ok(html.indexOf('id="activity-pop"') < html.indexOf("</header>")); // the breakdown sits with the controls
 });
 

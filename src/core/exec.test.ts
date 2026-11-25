@@ -32,3 +32,22 @@ test("a program that runs past its timeout resolves with exit code 124", async (
   const res = await realExec(node, ["-e", "setTimeout(() => {}, 10000)"], { timeoutMs: 200 });
   assert.equal(res.code, 124);
 });
+
+test("output can be watched as it arrives, and is still returned whole at the end", async () => {
+  const seen: string[] = [];
+  let finished = false;
+  let finishedAtFirstChunk: boolean | undefined;
+  const script = "process.stdout.write('one\\n'); setTimeout(() => process.stdout.write('two\\n'), 150)";
+  const res = await realExec(process.execPath, ["-e", script], {
+    onStdout: (chunk) => {
+      if (seen.length === 0) finishedAtFirstChunk = finished;
+      seen.push(chunk);
+    },
+  }).then((r) => {
+    finished = true;
+    return r;
+  });
+  assert.equal(res.stdout, "one\ntwo\n");
+  assert.deepEqual(seen, ["one\n", "two\n"]);
+  assert.equal(finishedAtFirstChunk, false);
+});

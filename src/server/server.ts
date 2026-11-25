@@ -7,7 +7,7 @@ import { readEnvelope, transportOf } from "../core/pipeline.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
 import { pageHtml, renderSite } from "../render/site.ts";
-import { createActivity } from "./activity.ts";
+import { type ActivityUpdate, createActivity } from "./activity.ts";
 import { createJobs } from "./jobs.ts";
 import { type Timers, createLive } from "./live.ts";
 
@@ -37,6 +37,17 @@ export interface AppResponse {
   status: number;
   headers: Record<string, string>;
   body: string;
+  /**
+   * For an answer that stays open: called once the headers are sent, with a function that
+   * writes to the page. It returns a function to call when the page goes away.
+   */
+  stream?: (write: (chunk: string) => void) => () => void;
+}
+
+/** One update in the form a page's EventSource reads. Only a whole line carries an id to resume from. */
+function sseEvent(update: ActivityUpdate): string {
+  if (update.type === "line") return `event: line\nid: ${update.line.id}\ndata: ${JSON.stringify(update.line)}\n\n`;
+  return `event: more\ndata: ${JSON.stringify({ id: update.id, text: update.text })}\n\n`;
 }
 
 const json = (status: number, value: unknown): AppResponse => ({
@@ -50,6 +61,7 @@ const ROUTES: Record<string, "GET" | "POST"> = {
   "/": "GET",
   "/api/status": "GET",
   "/api/activity": "GET",
+  "/api/activity/stream": "GET",
   "/api/live": "POST",
   "/api/tick": "POST",
   "/api/enrich": "POST",
@@ -158,6 +170,22 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
       case "/api/activity":
         return json(200, { lines: activity.lines() });
 
+      // The log as it is written: what has happened so far (or, for a page reconnecting,
+      // what it missed), then every update until the page closes the connection.
+      case "/api/activity/stream": {
+        const seen = Number(req.headers["last-event-id"] ?? Number.NaN);
+        return {
+          status: 200,
+          headers: { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-store" },
+          body: "",
+          stream(write) {
+            const send = (update: ActivityUpdate) => write(sseEvent(update));
+            for (const line of Number.isFinite(seen) ? activity.linesAfter(seen) : activity.lines()) send({ type: "line", line });
+            return activity.subscribe(send);
+          },
+        };
+      }
+
       case "/api/live": {
         if (typeof fields.on !== "boolean") return refuse(400, '"on" must be true or false');
         if (fields.on) live.start();
@@ -220,7 +248,13 @@ export function listen(app: { handle(req: AppRequest): Promise<AppResponse> }, p
         out = refuse(500, e instanceof Error ? e.message : String(e));
       }
       res.writeHead(out.status, out.headers);
-      res.end(out.body);
+      if (out.stream === undefined) {
+        res.end(out.body);
+        return;
+      }
+      res.flushHeaders(); // the page should know it is connected before there is anything to say
+      const stop = out.stream((chunk) => res.write(chunk));
+      res.on("close", stop);
     });
   });
 

@@ -29,6 +29,7 @@ export const realExec: Exec = (cmd, args, opts = {}) =>
         resolve({ code, stdout, stderr: stderr || error.message });
       },
     );
+    if (opts.onStdout) child.stdout?.on("data", opts.onStdout);
     child.stdin?.on("error", () => {});
     child.stdin?.end(opts.input ?? "");
   });

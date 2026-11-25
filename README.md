@@ -55,7 +55,9 @@ All are run as `node bin/divination.ts <command>`.
   every 15 minutes during working hours (`tick` in config). The choice survives a restart.
 - **Refresh now** collects and redraws straight away.
 - **The status** beside those buttons says when the next update is. Hover it for each
-  source's state; click it for a log of refreshes and Claude calls.
+  source's state; click it for the activity log. The log is live while it is open: each
+  step of a refresh appears as it happens, and during a Claude call so do the words Claude
+  writes and the tools it uses.
 - **The tick** at the right of a line marks it done. Done lines fold into a "Done" section
   and stop counting. A line comes back by itself when something new happens on it: a new
   commit, a new reply, an alert firing again.

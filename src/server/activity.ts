@@ -1,6 +1,7 @@
 // What the server is doing and what it did: each source's progress during a refresh, and
 // a short log of refreshes and Claude calls. It is built from the events the rest of the
 // tool already reports through `ctx.log`, so nothing here calls anything or costs anything.
+// A listener (the page's open log) hears each line as it is said.
 
 export interface SourceState {
   id: string;
@@ -19,13 +20,20 @@ export interface SourceState {
 }
 
 export interface ActivityLine {
+  /** Goes up with every line, across restarts too, so a page can ask for what it has not seen. */
+  id: number;
   at: number;
   level: "info" | "error";
   /** One line, or a line followed by indented detail. */
   text: string;
 }
 
+/** What a listener is told: a new line, or more text for the line Claude is still writing. */
+export type ActivityUpdate = { type: "line"; line: ActivityLine } | { type: "more"; id: number; text: string };
+
 const MAX_LINES = 300;
+/** The most text one line may grow to while Claude writes it. */
+const STREAM_MAX = 4000;
 
 type Fields = Record<string, unknown>;
 
@@ -41,10 +49,25 @@ const indent = (text: string) => text.split("\n").map((line) => `  ${line}`).joi
 export function createActivity(now: () => number, initial: SourceState[]) {
   const states = new Map(initial.map((s) => [s.id, { ...s }]));
   const lines: ActivityLine[] = [];
+  const listeners = new Set<(update: ActivityUpdate) => void>();
+  let nextId = now(); // starts at the clock, so a restarted server's ids are above the last one's
+  let growing: ActivityLine | null = null; // the line Claude is still writing, while it is the newest
 
-  const say = (text: string, level: ActivityLine["level"] = "info") => {
-    lines.push({ at: now(), level, text });
+  const tell = (update: ActivityUpdate) => {
+    for (const listener of listeners) listener(update);
+  };
+  const say = (text: string, level: ActivityLine["level"] = "info"): ActivityLine => {
+    const line = { id: nextId++, at: now(), level, text };
+    lines.push(line);
     if (lines.length > MAX_LINES) lines.splice(0, lines.length - MAX_LINES);
+    growing = null;
+    tell({ type: "line", line: { ...line } });
+    return line;
+  };
+  /** As much of `text` as still fits on a line that already holds `used` characters; cut text ends in an ellipsis. */
+  const fitting = (text: string, used: number) => {
+    const room = STREAM_MAX - used;
+    return text.length <= room ? text : room > 0 ? `${text.slice(0, room - 1)}…` : "";
   };
   const titleOf = (id: string) => states.get(id)?.title ?? id;
 
@@ -104,6 +127,29 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           break;
         }
 
+        // Claude's words, a few at a time: they grow one line until a tool call, a new
+        // passage (`start`) or anything else being logged begins another.
+        case "llm-text": {
+          const text = typeof f.text === "string" ? f.text : "";
+          if (text === "") break;
+          if (growing === null || f.start === true) {
+            const prefix = "Claude: ";
+            growing = say(prefix + fitting(text, prefix.length));
+            break;
+          }
+          const more = fitting(text, growing.text.length);
+          if (more === "") break; // the line is full
+          growing.text += more;
+          tell({ type: "more", id: growing.id, text: more });
+          break;
+        }
+
+        case "llm-tool": {
+          const detail = typeof f.detail === "string" && f.detail !== "" ? `: ${f.detail}` : "";
+          say(`Claude is using ${String(f.name)}${detail}`);
+          break;
+        }
+
         case "llm": {
           const ok = f.ok === true;
           const parts = [
@@ -122,6 +168,20 @@ export function createActivity(now: () => number, initial: SourceState[]) {
     sources: (): SourceState[] => [...states.values()].map((s) => ({ ...s })),
 
     /** The newest lines, oldest first. */
-    lines: (limit = MAX_LINES): ActivityLine[] => lines.slice(-limit),
+    lines: (limit = MAX_LINES): ActivityLine[] => lines.slice(-limit).map((line) => ({ ...line })),
+
+    /**
+     * The lines a page that last saw line `id` is missing: every later one, and the one
+     * still being written, which may have grown since.
+     */
+    linesAfter: (id: number): ActivityLine[] => lines.filter((line) => line.id > id || line === growing).map((line) => ({ ...line })),
+
+    /** Hear every update from now on. Returns a function that stops it. */
+    subscribe(listener: (update: ActivityUpdate) => void): () => void {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
   };
 }

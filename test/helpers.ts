@@ -150,18 +150,21 @@ export function fakeHttp(routes: Record<string, unknown | ((url: string) => unkn
 
 /**
  * An Exec that answers from a table. The key is the command and its arguments joined by
- * spaces, matched by prefix (longest first). No match exits 1.
+ * spaces, matched by prefix (longest first). No match exits 1. A caller watching the
+ * output is fed it first: in the pieces given as `chunks`, or else all at once.
  */
-export function fakeExec(table: Record<string, { code?: number; stdout?: string }>): Exec & { calls: string[][] } {
+export function fakeExec(table: Record<string, { code?: number; stdout?: string; chunks?: string[] }>): Exec & { calls: string[][] } {
   const calls: string[][] = [];
   const keys = Object.keys(table).sort((a, b) => b.length - a.length);
-  const exec = async (cmd: string, args: string[]) => {
+  const exec: Exec = async (cmd, args, opts) => {
     calls.push([cmd, ...args]);
     const line = [cmd, ...args].join(" ");
     const key = keys.find((k) => line.startsWith(k));
     if (key === undefined) return { code: 1, stdout: "", stderr: `fakeExec: no entry for ${line}` };
     const entry = table[key]!;
-    return { code: entry.code ?? 0, stdout: entry.stdout ?? "", stderr: "" };
+    const stdout = entry.stdout ?? (entry.chunks ?? []).join("");
+    for (const chunk of entry.chunks ?? (stdout === "" ? [] : [stdout])) opts?.onStdout?.(chunk);
+    return { code: entry.code ?? 0, stdout, stderr: "" };
   };
   return Object.assign(exec, { calls });
 }

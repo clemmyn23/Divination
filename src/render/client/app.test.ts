@@ -32,6 +32,25 @@ class FakeElement {
   scrollTop = 0;
   open = false;
   className = "";
+  // For the log, which scrolls.
+  scrollHeight = 0;
+  clientHeight = 0;
+}
+
+/** Stands in for the browser's EventSource: records where it connected, and delivers what a test emits. */
+class FakeStream {
+  url: string;
+  closed = false;
+  handlers: Record<string, ((event: unknown) => void)[]> = {};
+  constructor(url: string) {
+    this.url = url;
+  }
+  addEventListener(type: string, fn: (event: unknown) => void) {
+    (this.handlers[type] ??= []).push(fn);
+  }
+  close() {
+    this.closed = true;
+  }
 }
 
 interface Status {
@@ -65,6 +84,7 @@ function page(stored: string | null, opts: Options = {}) {
     "activity-pop": new FakeElement("activity-pop", ""),
     "activity-log": new FakeElement("activity-log", ""),
     "activity-lines": new FakeElement("activity-lines", ""),
+    "activity-live": new FakeElement("activity-live", ""),
     "activity-close": new FakeElement("activity-close", "Close"),
   };
   const dialog = elements["activity-log"]! as FakeElement & { showModal(): void; close(): void };
@@ -101,9 +121,16 @@ function page(stored: string | null, opts: Options = {}) {
   };
   const intervals: { fn: () => unknown; ms: number }[] = [];
   let reloads = 0;
+  const streams: FakeStream[] = [];
 
   const context = {
     Element: FakeElement,
+    EventSource: class extends FakeStream {
+      constructor(url: string) {
+        super(url);
+        streams.push(this);
+      }
+    },
     setTimeout: (fn: () => void) => fn(),
     setInterval: (fn: () => unknown, ms: number) => intervals.push({ fn, ms }),
     navigator: { clipboard: { writeText: async () => {} } },
@@ -176,6 +203,12 @@ function page(stored: string | null, opts: Options = {}) {
     pop: elements["activity-pop"]!,
     dialog,
     logLines: elements["activity-lines"]!,
+    logLive: elements["activity-live"]!,
+    streams,
+    /** Deliver an event on the newest activity stream, as the server would. */
+    emit(type: string, data?: unknown) {
+      for (const fn of streams.at(-1)!.handlers[type] ?? []) fn({ data: JSON.stringify(data) });
+    },
     closeLog: elements["activity-close"]!,
     themeBeforeParse: root.dataset.theme,
     get reloads() {
@@ -500,34 +533,71 @@ test("with nothing to break down, the breakdown is empty and the status reads as
   assert.match(p.liveStatus.textContent, /^next update /);
 });
 
-test("clicking the status opens the log, newest last, with a time on each entry and its detail kept", async () => {
+const LINE1 = { id: 11, at: at("2026-11-25T05:00:00Z"), level: "info", text: "Refresh started (Refresh now)" };
+const LINE2 = { id: 12, at: at("2026-11-25T05:00:42Z"), level: "error", text: "Claude (haiku) failed in 0.1 s\n  claude failed: Failed to authenticate" };
+
+test("clicking the status opens the log, which follows the server's activity stream, newest last", async () => {
   const p = page(null);
   await p.finishParsing();
-  p.server.activity = [
-    { at: at("2026-11-25T05:00:00Z"), level: "info", text: "Refresh started (Refresh now)" },
-    { at: at("2026-11-25T05:00:42Z"), level: "error", text: "Claude (haiku) failed in 0.1 s\n  claude failed: Failed to authenticate" },
-  ];
+  assert.equal(p.streams.length, 0); // nothing is followed until the log is open
+
   await p.click(p.liveStatus);
   assert.equal(p.dialog.open, true);
-  assert.ok(p.server.requests.some((r) => r.url === "/api/activity" && r.method === "GET"));
+  assert.deepEqual(p.streams.map((s) => s.url), ["/api/activity/stream"]);
+  p.emit("line", LINE1);
+  p.emit("line", LINE2);
   const text = p.logLines.textContent.split("\n");
   assert.match(text[0]!, /^\d\d:\d\d:\d\d  Refresh started \(Refresh now\)$/);
   assert.match(text[1]!, /^\d\d:\d\d:\d\d ! Claude \(haiku\) failed in 0\.1 s$/);
   assert.equal(text[2], "            claude failed: Failed to authenticate");
-
-  await p.click(p.closeLog);
-  assert.equal(p.dialog.open, false);
+  assert.ok(!p.server.requests.some((r) => r.url === "/api/activity")); // it is pushed, never asked for
 });
 
-test("an empty log says so, and the open log keeps itself up to date", async () => {
+test("a line Claude is still writing grows in place", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  p.emit("line", { id: 20, at: at("2026-11-25T05:00:00Z"), level: "info", text: "Claude: Read" });
+  p.emit("more", { id: 20, text: "ing the " });
+  p.emit("more", { id: 20, text: "diff." });
+  p.emit("more", { id: 99, text: "for a line this page never had" });
+  assert.match(p.logLines.textContent, /^\d\d:\d\d:\d\d  Claude: Reading the diff\.$/);
+
+  // After a dropped connection the server sends the growing line again; it replaces the page's copy.
+  p.emit("line", { id: 20, at: at("2026-11-25T05:00:00Z"), level: "info", text: "Claude: Reading the diff. Fine." });
+  p.emit("line", LINE1); // an older line sent again is not added twice
+  assert.match(p.logLines.textContent, /^\d\d:\d\d:\d\d  Claude: Reading the diff\. Fine\.$/);
+});
+
+test("an empty log says so, and the log says whether it is live", async () => {
   const p = page(null);
   await p.finishParsing();
   await p.click(p.liveStatus);
   assert.equal(p.logLines.textContent, "Nothing has happened since the server started.");
+  assert.equal(p.logLive.textContent, "connecting…");
+  p.emit("open");
+  assert.equal(p.logLive.textContent, "● live");
+  p.emit("line", LINE1);
+  assert.match(p.logLines.textContent, /Refresh started \(Refresh now\)$/);
+  p.emit("error");
+  assert.equal(p.logLive.textContent, "reconnecting…");
+  assert.match(p.logLines.textContent, /Refresh started \(Refresh now\)$/); // what was read stays
+});
 
-  p.server.activity = [{ at: at("2026-11-25T05:00:00Z"), level: "info", text: "Refresh started (timer)" }];
-  await p.poll();
-  assert.match(p.logLines.textContent, /Refresh started \(timer\)$/);
+test("closing the log stops following it; opening it again starts afresh", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  p.emit("line", LINE1);
+  await p.click(p.closeLog);
+  assert.equal(p.dialog.open, false);
+  assert.equal(p.streams[0]!.closed, true);
+
+  await p.click(p.liveStatus);
+  assert.equal(p.streams.length, 2);
+  assert.equal(p.logLines.textContent, "Nothing has happened since the server started."); // the server sends it all again
+  p.emit("line", LINE1);
+  assert.equal(p.logLines.textContent.split("\n").length, 1);
 });
 
 test("with the server down the status still opens the log, which says it cannot be read", async () => {
@@ -535,5 +605,43 @@ test("with the server down the status still opens the log, which says it cannot 
   await p.finishParsing();
   await p.click(p.liveStatus);
   assert.equal(p.dialog.open, true);
+  p.emit("error");
   assert.equal(p.logLines.textContent, "The server is not running, so there is no log to show.");
+  assert.equal(p.logLive.textContent, "not connected");
+});
+
+test("the log stays on the newest line unless I have scrolled up to read", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  Object.assign(p.logLines, { scrollHeight: 500, clientHeight: 100, scrollTop: 400 }); // at the bottom
+  p.emit("line", LINE1);
+  assert.equal(p.logLines.scrollTop, 500);
+
+  p.logLines.scrollTop = 120; // scrolled up
+  p.emit("line", LINE2);
+  assert.equal(p.logLines.scrollTop, 120);
+});
+
+test("an open log is open again, and following, after the page reloads itself", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  await p.click(p.tick); // the server redraws the page, which reloads this one
+  assert.equal(p.reloads, 1);
+  assert.equal(JSON.parse(p.session.get("divination-view")!).log, true);
+
+  const next = page(null, { session: p.session.get("divination-view")! });
+  await next.finishParsing();
+  assert.equal(next.dialog.open, true);
+  assert.deepEqual(next.streams.map((s) => s.url), ["/api/activity/stream"]);
+});
+
+test("an open log does not make the page ask the server for anything more often", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.liveStatus);
+  const before = p.server.requests.length;
+  for (const { fn, ms } of p.intervals) if (ms === 1000) await fn();
+  assert.equal(p.server.requests.length, before);
 });

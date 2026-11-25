@@ -1,8 +1,9 @@
 // Runs in the page. Inlined into <head> by src/render/page.ts; never loaded from a URL.
 // It runs before the body exists, so anything that needs a button waits for the page.
 //
-// The only requests it makes are to the local server that served the page. It asks for an
-// LLM call in exactly one place: when a button marked data-enrich is pressed.
+// The only requests it makes are to the local server that served the page, and the only
+// connection it keeps open is to that server's activity stream, while the log is open. It
+// asks for an LLM call in exactly one place: when a button marked data-enrich is pressed.
 
 (() => {
   // ---- Theme: the browser's business only ----
@@ -57,7 +58,7 @@
         const id = panelOf(fold);
         if (id && fold.open) open.push(`${id}:${fold.className}`);
       }
-      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ scroll, open }));
+      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ scroll, open, ...(logIsOpen() ? { log: true } : {}) }));
     } catch {
       // Storage can be blocked; the page then reloads from the top.
     }
@@ -75,6 +76,7 @@
         const top = (saved.scroll ?? {})[panelOf(body)];
         if (typeof top === "number") body.scrollTop = top;
       }
+      if (saved.log) openLog(); // it was open when the page reloaded itself
     } catch {
       // Nothing usable was remembered.
     }
@@ -123,30 +125,110 @@
       .join("\n");
   }
 
-  const logIsOpen = () => Boolean(el("activity-log")?.open);
+  // The log is not fetched: while its dialog is open the server pushes each line as it is
+  // logged, and the pieces of a line Claude is still writing.
+
+  const LOG_MAX = 300; // as many entries as the server keeps
+  const nextFrame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : (fn) => setTimeout(fn, 16);
+  let stream = null; // the open connection to the server's activity stream
+  let entries = []; // what it has sent, oldest first
+  let connected = false; // the stream has connected at least once
+  let unreachable = false; // it failed before ever connecting: the server is not there
+  let drawQueued = false;
+
+  function logIsOpen() {
+    return Boolean(el("activity-log")?.open);
+  }
+
+  function setLive(text) {
+    const live = el("activity-live");
+    if (live) live.textContent = text;
+  }
 
   // Each entry is a time and a line; an error is flagged, and any detail lines keep their place under it.
-  async function loadLog() {
+  function drawLog() {
+    drawQueued = false;
     const lines = el("activity-lines");
     if (!lines) return;
-    try {
-      const res = await fetch("/api/activity");
-      if (!res.ok) throw new Error(String(res.status));
-      const entries = (await res.json()).lines ?? [];
-      lines.textContent =
-        entries.length === 0
-          ? "Nothing has happened since the server started."
-          : entries
-              .map((entry) => {
-                const [first, ...rest] = entry.text.split("\n");
-                const head = `${clock(entry.at, true)} ${entry.level === "error" ? "! " : " "}${first}`;
-                return [head, ...rest.map((line) => `${" ".repeat(10)}${line}`)].join("\n");
-              })
-              .join("\n");
-      if (typeof lines.scrollHeight === "number") lines.scrollTop = lines.scrollHeight; // newest is last
-    } catch {
-      lines.textContent = "The server is not running, so there is no log to show.";
+    // Stay on the newest line, unless I have scrolled up to read something.
+    const atBottom = lines.scrollTop + lines.clientHeight >= lines.scrollHeight - 8;
+    if (entries.length > 0) {
+      lines.textContent = entries
+        .map((entry) => {
+          const [first, ...rest] = entry.text.split("\n");
+          const head = `${clock(entry.at, true)} ${entry.level === "error" ? "! " : " "}${first}`;
+          return [head, ...rest.map((line) => `${" ".repeat(10)}${line}`)].join("\n");
+        })
+        .join("\n");
+    } else {
+      lines.textContent = unreachable ? "The server is not running, so there is no log to show." : "Nothing has happened since the server started.";
     }
+    if (atBottom) lines.scrollTop = lines.scrollHeight;
+  }
+
+  // Text can arrive many times a second; draw at most once a frame.
+  function queueDraw() {
+    if (drawQueued) return;
+    drawQueued = true;
+    nextFrame(drawLog);
+  }
+
+  function stopFollowing() {
+    if (stream) stream.close();
+    stream = null;
+    setLive("");
+  }
+
+  // Start over: the server sends everything it has, then each update as it happens.
+  function followLog() {
+    stopFollowing();
+    entries = [];
+    connected = false;
+    unreachable = typeof EventSource !== "function";
+    setLive(unreachable ? "not connected" : "connecting…");
+    drawLog();
+    if (unreachable) return;
+
+    const source = new EventSource("/api/activity/stream");
+    stream = source;
+    source.addEventListener("open", () => {
+      connected = true;
+      unreachable = false;
+      setLive("● live");
+      queueDraw();
+    });
+    // The browser reconnects by itself, and tells the server the last line it saw.
+    source.addEventListener("error", () => {
+      if (connected) {
+        setLive("reconnecting…");
+        return;
+      }
+      unreachable = true;
+      setLive("not connected");
+      queueDraw();
+    });
+    source.addEventListener("line", (event) => {
+      const line = JSON.parse(event.data);
+      const index = entries.findIndex((entry) => entry.id === line.id);
+      if (index >= 0) entries[index] = line; // sent again after a reconnect: it may have grown
+      else if (entries.length === 0 || line.id > entries[entries.length - 1].id) entries.push(line);
+      if (entries.length > LOG_MAX) entries.shift();
+      queueDraw();
+    });
+    source.addEventListener("more", (event) => {
+      const more = JSON.parse(event.data);
+      const entry = entries.find((candidate) => candidate.id === more.id);
+      if (!entry) return;
+      entry.text += more.text;
+      queueDraw();
+    });
+  }
+
+  function openLog() {
+    const dialog = el("activity-log");
+    if (!dialog) return;
+    if (!dialog.open) dialog.showModal();
+    followLog();
   }
 
   function restorePending() {
@@ -223,7 +305,6 @@
     } catch {
       showOffline();
     }
-    if (logIsOpen()) await loadLog();
   }
 
   // Every action goes out with the token the server put in this page.
@@ -260,8 +341,10 @@
     restoreView();
     poll();
     setInterval(poll, POLL_MS);
-    // While something is running, or the log is open, look every second so progress is seen as it happens.
-    setInterval(() => (working || logIsOpen() ? poll() : undefined), FAST_POLL_MS);
+    // While something is running, look every second so progress is seen as it happens.
+    setInterval(() => (working ? poll() : undefined), FAST_POLL_MS);
+    // Closed with Escape rather than the button: stop following all the same.
+    el("activity-log")?.addEventListener?.("close", stopFollowing);
   });
 
   document.addEventListener("click", async (event) => {
@@ -296,13 +379,12 @@
 
     // The status opens the activity log. It works with the server down too, to say so.
     if (target.closest("#live-status")) {
-      const dialog = el("activity-log");
-      if (dialog && !dialog.open) dialog.showModal();
-      await loadLog();
+      openLog();
       return;
     }
     if (target.closest("#activity-close")) {
       el("activity-log")?.close();
+      stopFollowing();
       return;
     }
 

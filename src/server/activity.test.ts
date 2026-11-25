@@ -100,3 +100,92 @@ test("the log keeps the newest 300 lines, can be asked for fewer, and ignores ev
   assert.equal(a.lines().length, 300);
   assert.equal(a.lines(5).length, 5);
 });
+
+// Streaming: lines are numbered, and a listener hears each one as it is said
+
+test("every line has an id that only goes up, and the lines after an id can be asked for", () => {
+  const { a } = activity();
+  a.record("tick-start", { forced: true });
+  a.record("collect-start", { source: "github" });
+  a.record("tick", { result: "ran", ms: 10 });
+  const ids = a.lines().map((l) => l.id);
+  assert.ok(ids[0]! < ids[1]! && ids[1]! < ids[2]!);
+  assert.deepEqual(a.linesAfter(ids[0]!).map((l) => l.id), [ids[1], ids[2]]);
+  assert.deepEqual(a.linesAfter(ids[2]!), []);
+});
+
+test("a server started later numbers its lines above an earlier server's", () => {
+  const first = createActivity(() => T0, []);
+  for (let i = 0; i < 50; i++) first.record("tick-start", {});
+  const second = createActivity(() => T0 + 1000, []);
+  second.record("tick-start", {});
+  assert.ok(second.lines()[0]!.id > first.lines().at(-1)!.id);
+});
+
+test("a listener hears each new line as it is said, until it stops listening", () => {
+  const { a } = activity();
+  const heard: unknown[] = [];
+  const stop = a.subscribe((update) => heard.push(update));
+  a.record("tick-start", { forced: true });
+  assert.deepEqual(heard, [{ type: "line", line: a.lines()[0] }]);
+  stop();
+  a.record("tick", { result: "ran", ms: 10 });
+  assert.equal(heard.length, 1);
+});
+
+test("what Claude writes grows one line as it streams; a tool or a new passage starts another", () => {
+  const { a } = activity();
+  const heard: { type: string; id?: number; text?: string; line?: { id: number; text: string } }[] = [];
+  a.subscribe((update) => heard.push(update));
+
+  a.record("llm-text", { text: "Reading ", start: true });
+  a.record("llm-text", { text: "the diff." });
+  a.record("llm-tool", { name: "Bash", detail: "gh pr diff 12" });
+  a.record("llm-text", { text: "Looks ", start: true });
+  a.record("llm-text", { text: "fine." });
+  a.record("llm-text", { text: "Second thought.", start: true });
+  a.record("llm-tool", { name: "Read", detail: "" });
+
+  assert.deepEqual(
+    a.lines().map((l) => l.text),
+    ["Claude: Reading the diff.", "Claude is using Bash: gh pr diff 12", "Claude: Looks fine.", "Claude: Second thought.", "Claude is using Read"],
+  );
+  const first = a.lines()[0]!.id;
+  assert.deepEqual(heard.slice(0, 2), [
+    { type: "line", line: { id: first, at: T0, level: "info", text: "Claude: Reading " } },
+    { type: "more", id: first, text: "the diff." },
+  ]);
+});
+
+test("text that arrives after something else was logged starts a new line rather than growing an old one", () => {
+  const { a } = activity();
+  a.record("llm-text", { text: "One", start: true });
+  a.record("tick-start", { forced: false });
+  a.record("llm-text", { text: " two" });
+  assert.deepEqual(a.lines().map((l) => l.text), ["Claude: One", "Refresh started (timer)", "Claude:  two"]);
+});
+
+test("a streamed line stops growing at 4000 characters, and says it was cut", () => {
+  const { a } = activity();
+  const heard: { type: string; text?: string }[] = [];
+  a.record("llm-text", { text: "x".repeat(3000), start: true });
+  a.subscribe((update) => heard.push(update));
+  a.record("llm-text", { text: "y".repeat(3000) });
+  a.record("llm-text", { text: "z".repeat(10) });
+  const text = a.lines()[0]!.text;
+  assert.equal(text.length, 4000);
+  assert.ok(text.endsWith("y…"));
+  assert.equal(heard.length, 1); // the listener hears only what was kept
+  assert.equal(heard[0]!.text!.length, 4000 - "Claude: ".length - 3000);
+});
+
+test("a page catching up is also given the line still being written, which may have grown", () => {
+  const { a } = activity();
+  a.record("tick-start", { forced: true });
+  a.record("llm-text", { text: "Read", start: true });
+  const growing = a.lines()[1]!.id;
+  a.record("llm-text", { text: "ing" });
+  assert.deepEqual(a.linesAfter(growing).map((l) => l.text), ["Claude: Reading"]);
+  a.record("llm-tool", { name: "Bash", detail: "ls" });
+  assert.deepEqual(a.linesAfter(growing).map((l) => l.text), ["Claude is using Bash: ls"]);
+});

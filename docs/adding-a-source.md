@@ -146,7 +146,9 @@ export interface Enricher<TData> {
 - `items` gives each item a `key` and a `hash`. The hash is what the result is cached
   under, so choose it to change exactly when the answer should be asked for again.
 - `run` calls `runClaude` from `src/enrich/claude.ts` with a prompt file, a JSON schema
-  for the answer, a model from config, and only the tools the prompt needs.
+  for the answer, a model from config, and only the tools the prompt needs. While it
+  runs, what Claude writes and the tools it uses show up in the page's activity log;
+  an enricher does nothing to get that.
 - The panel reads results from `view.enrich[<enricher id>][<key>]` and offers a button
   when one is missing:
   `<button data-enrich="<enricher id>" data-key="<key>">…</button>`.

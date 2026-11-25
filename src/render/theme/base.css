@@ -214,6 +214,14 @@ button[data-enrich]::before {
   background: var(--lilac);
 }
 
+/* Whether the log is being followed live. */
+#activity-live {
+  margin-left: 8px;
+  font-weight: 500;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 #activity-lines {
   margin: 0;
   padding: 10px 14px;

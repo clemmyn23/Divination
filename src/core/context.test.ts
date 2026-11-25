@@ -39,3 +39,13 @@ test("contextWith gives a fixed clock, fakes and the local config", async () => 
   assert.equal(await ctx.secrets.get("slack"), undefined);
   assert.equal(contextWith({}, { now: () => 7 }).now(), 7);
 });
+
+test("the pieces of text Claude streams are not written to the log file; the events around them are", () => {
+  const ctx = createContext(tempRoot());
+  ctx.log("llm-start", { model: "haiku" });
+  ctx.log("llm-text", { text: "Read", start: true });
+  ctx.log("llm-text", { text: "ing" });
+  ctx.log("llm-tool", { name: "Bash", detail: "gh pr diff 12" });
+  const events = readFileSync(join(ctx.paths.logs, "events.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l).event);
+  assert.deepEqual(events, ["llm-start", "llm-tool"]);
+});

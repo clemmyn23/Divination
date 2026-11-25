@@ -176,7 +176,7 @@ ${attentionPanel(attention, stale)}
 ${sections.join("\n")}
 </main>
 <dialog id="activity-log" aria-labelledby="activity-title">
-<h2 id="activity-title">Activity</h2>
+<h2 id="activity-title">Activity <span id="activity-live"></span></h2>
 <pre id="activity-lines"></pre>
 <button id="activity-close" type="button">Close</button>
 </dialog>

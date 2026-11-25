@@ -21,12 +21,86 @@ export interface ClaudeRequest {
   timeoutMs?: number;
 }
 
+/** The most of a tool's input that is kept in the log. */
+const TOOL_DETAIL_MAX = 200;
+
+/** The last line the CLI writes: how the run went and what it answered. */
 interface CliOutput {
+  type?: string;
   is_error?: boolean;
   result?: unknown;
   structured_output?: unknown;
   total_cost_usd?: number;
   num_turns?: number;
+}
+
+/** One line of the CLI's `stream-json` output. Only the parts read here are named. */
+interface CliEvent {
+  type?: string;
+  /** Set on a message the CLI wrote itself to report an API error. */
+  is_api_error_message?: boolean;
+  message?: { content?: { type?: string; text?: string; name?: string; input?: unknown }[] };
+  event?: { type?: string; delta?: { type?: string; text?: string } };
+}
+
+const cut = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
+
+/** A tool call in a few words: the command for Bash, otherwise its input as JSON, cut short. */
+function toolDetail(name: string, input: unknown): string {
+  const command = (input as { command?: unknown } | null)?.command;
+  return cut(name === "Bash" && typeof command === "string" ? command : (JSON.stringify(input) ?? ""), TOOL_DETAIL_MAX);
+}
+
+/**
+ * Reports what a run is doing while it is still going, from the events the CLI writes
+ * one per line: `llm-text` for each piece of text Claude writes (`start` marks the first
+ * piece of a new passage) and `llm-tool` for each tool it uses. What a tool returned is
+ * never reported: that is the gathered data itself.
+ */
+function watchStream(log: Context["log"]): (chunk: string) => void {
+  let buffer = "";
+  let midText = false; // some of the current message's text has already been reported, piece by piece
+
+  const onEvent = (event: CliEvent) => {
+    if (event.type === "stream_event") {
+      const delta = event.event?.delta;
+      if (event.event?.type === "content_block_delta" && delta?.type === "text_delta" && delta.text) {
+        log("llm-text", midText ? { text: delta.text } : { text: delta.text, start: true });
+        midText = true;
+      }
+      return;
+    }
+    if (event.type !== "assistant" || event.is_api_error_message) return;
+    for (const block of event.message?.content ?? []) {
+      // Text that already arrived in pieces is not repeated when the whole message follows.
+      if (block.type === "text" && block.text && !midText) log("llm-text", { text: block.text, start: true });
+      if (block.type === "tool_use" && block.name) log("llm-tool", { name: block.name, detail: toolDetail(block.name, block.input) });
+    }
+    midText = false;
+  };
+
+  return (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? ""; // a chunk can end in the middle of a line
+    for (const line of lines) {
+      const event = parseJson(line);
+      if (typeof event === "object" && event !== null) onEvent(event as CliEvent);
+    }
+  };
+}
+
+/** The run's result: the last `result` line of a stream, or the output as one JSON value. */
+function resultOf(stdout: string): CliOutput | undefined {
+  const isObject = (v: unknown): v is CliOutput => typeof v === "object" && v !== null && !Array.isArray(v);
+  const whole = parseJson(stdout);
+  if (isObject(whole)) return whole;
+  const lines = stdout.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const event = parseJson(lines[i]!);
+    if (isObject(event) && event.type === "result") return event;
+  }
+  return undefined;
 }
 
 function parseJson(text: string): unknown {
@@ -48,14 +122,18 @@ function jsonFromText(text: string): unknown {
  *
  * This is the only place the tool starts an LLM, and it is only reached from
  * `enrichOnDemand`. The run loads no MCP servers, keeps no session, is capped by
- * `enrich.maxBudgetUsd`, and may use only the tools named in `allowedTools`.
+ * `enrich.maxBudgetUsd`, and may use only the tools named in `allowedTools`. What it
+ * writes and the tools it uses are reported through `ctx.log` while it runs.
  */
 export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unknown> {
   const args = [
     "-p",
     readFileSync(req.promptFile, "utf8"),
+    // One JSON event per line while it works, text in pieces as it is written, the result last.
     "--output-format",
-    "json",
+    "stream-json",
+    "--verbose",
+    "--include-partial-messages",
     "--model",
     req.model,
     "--json-schema",
@@ -89,17 +167,17 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
       input: req.input,
       env: req.env,
       timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      onStdout: watchStream(ctx.log),
     });
 
     if (res.code === TIMED_OUT) throw new Error("claude failed: timed out");
 
-    const parsed = parseJson(res.stdout);
-    out = typeof parsed === "object" && parsed !== null ? (parsed as CliOutput) : undefined;
+    out = resultOf(res.stdout);
     if (res.code !== 0 || out === undefined || out.is_error === true) {
       const why =
         typeof out?.result === "string" && out.result !== ""
           ? out.result
-          : res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output was not JSON");
+          : res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output had no result");
       throw new Error(`claude failed: ${why}`);
     }
 
@@ -111,7 +189,7 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     }
 
     const text = JSON.stringify(answer, null, 2);
-    ctx.log("llm", { ok: true, ms: elapsed(), model: req.model, ...usage(), output: text.length <= LOG_MAX ? text : `${text.slice(0, LOG_MAX - 1)}…` });
+    ctx.log("llm", { ok: true, ms: elapsed(), model: req.model, ...usage(), output: cut(text, LOG_MAX) });
     return answer;
   } catch (e) {
     ctx.log("llm", { ok: false, ms: elapsed(), model: req.model, ...usage(), error: e instanceof Error ? e.message : String(e) });

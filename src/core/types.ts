@@ -84,7 +84,13 @@ export interface Http {
 export type Exec = (
   cmd: string,
   args: string[],
-  opts?: { input?: string; env?: Record<string, string>; timeoutMs?: number },
+  opts?: {
+    input?: string;
+    env?: Record<string, string>;
+    timeoutMs?: number;
+    /** Called with each piece of output as it arrives. The whole output is still returned at the end. */
+    onStdout?: (chunk: string) => void;
+  },
 ) => Promise<{ code: number; stdout: string; stderr: string }>;
 
 export interface Secrets {

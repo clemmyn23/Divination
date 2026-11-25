@@ -235,3 +235,86 @@ test("the page refuses to be framed and allows only the one script it carries", 
   const hash = createHash("sha256").update(scripts[0]!).digest("base64");
   assert.ok(policy.includes(`script-src 'sha256-${hash}'`), policy);
 });
+
+// Streaming: the page follows the activity log as it is written
+
+const sse = (chunks: string[]) =>
+  chunks
+    .join("")
+    .split("\n\n")
+    .filter((block) => block !== "")
+    .map((block) => {
+      const field = (name: string) => block.split("\n").find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2);
+      return { event: field("event"), id: field("id"), data: JSON.parse(field("data") ?? "null") };
+    });
+
+test("the activity stream sends what has happened so far, then each new line as it happens", async () => {
+  await json(req("POST", "/api/enrich", { body: JSON.stringify({ enricher: "fake-enricher", key: "a" }) }));
+  await settle();
+
+  const res = await app.handle(req("GET", "/api/activity/stream"));
+  assert.equal(res.status, 200);
+  assert.equal(res.headers["content-type"], "text/event-stream; charset=utf-8");
+  assert.equal(res.headers["cache-control"], "no-store");
+  assert.equal(res.body, "");
+
+  const written: string[] = [];
+  const stop = res.stream!((chunk) => written.push(chunk));
+  const backlog = sse(written);
+  assert.equal(backlog[0]!.event, "line");
+  assert.equal(backlog[0]!.data.text, "Asked for fake-enricher on a (1 item)");
+  assert.equal(backlog[0]!.id, String(backlog[0]!.data.id));
+
+  const before = written.length;
+  await json(req("POST", "/api/tick"));
+  await settle();
+  const fresh = sse(written.slice(before));
+  assert.equal(fresh[0]!.data.text, "Refresh started (Refresh now)");
+  assert.ok(fresh.some((e) => /^Refresh finished in /.test(e.data.text)));
+
+  stop();
+  const after = written.length;
+  await json(req("POST", "/api/tick"));
+  await settle();
+  assert.equal(written.length, after);
+});
+
+test("a page that reconnects is sent only what it has not seen", async () => {
+  await json(req("POST", "/api/tick"));
+  await settle();
+  const all: string[] = [];
+  (await app.handle(req("GET", "/api/activity/stream"))).stream!((chunk) => all.push(chunk))();
+  const seen = sse(all);
+  assert.ok(seen.length >= 3);
+
+  const rest: string[] = [];
+  (await app.handle(req("GET", "/api/activity/stream", { headers: { "last-event-id": seen[1]!.id! } }))).stream!((chunk) => rest.push(chunk))();
+  assert.deepEqual(sse(rest), seen.slice(2));
+});
+
+test("text Claude is still writing reaches the stream piece by piece", async () => {
+  const chatty: Enricher<unknown> = {
+    id: "chatty",
+    items: () => [{ key: "a", hash: "chatty-a", input: 1 }],
+    run: async (_items, c) => {
+      c.log("llm-text", { text: "Hel", start: true });
+      c.log("llm-text", { text: "lo" });
+      return { a: "out" };
+    },
+  };
+  const talking = createApp(ctx, [sourceWith(ctx, chatty)], "tok", timers);
+  const written: string[] = [];
+  (await talking.handle(req("GET", "/api/activity/stream"))).stream!((chunk) => written.push(chunk));
+  await talking.handle(req("POST", "/api/enrich", { body: JSON.stringify({ enricher: "chatty", key: "a" }) }));
+  await settle();
+
+  const got = sse(written);
+  const line = got.find((e) => e.event === "line" && e.data.text === "Claude: Hel")!;
+  assert.ok(line);
+  assert.deepEqual(got.find((e) => e.event === "more"), { event: "more", id: undefined, data: { id: line.data.id, text: "lo" } });
+});
+
+test("the activity stream needs the right host, and is read, not posted to", async () => {
+  assert.equal((await app.handle(req("GET", "/api/activity/stream", { headers: { host: "evil.example" } }))).status, 403);
+  assert.equal((await app.handle(req("POST", "/api/activity/stream"))).status, 405);
+});

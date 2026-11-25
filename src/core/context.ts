@@ -15,6 +15,9 @@ export function createContext(root: string, overrides: Partial<Context> = {}): C
   const now = overrides.now ?? (() => Date.now());
 
   const log = (event: string, fields: object = {}) => {
+    // Claude's words arrive a few at a time while it writes; they are for the page's
+    // activity view, not one line each in the log file. Its whole answer is logged as `llm`.
+    if (event === "llm-text") return;
     mkdirSync(paths.logs, { recursive: true });
     appendFileSync(join(paths.logs, "events.jsonl"), JSON.stringify({ at: now(), event, ...fields }) + "\n");
   };
