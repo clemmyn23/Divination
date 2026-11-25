@@ -140,6 +140,14 @@ button:disabled {
   border-color: var(--accent);
 }
 
+/* The theme toggle is the quietest control: it sits last and has no border. */
+#theme-toggle {
+  min-width: 64px;
+  padding: 4px 8px;
+  border-color: transparent;
+  color: var(--ink-soft);
+}
+
 /* Buttons that call Claude carry a sparkle, so it is always clear which ones do. */
 button[data-enrich] {
   border-color: var(--accent);

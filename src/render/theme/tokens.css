@@ -1,60 +1,45 @@
-/* Fortune-teller's desk. Every colour on the page comes from here. */
+/*
+ * Fortune-teller's desk. Every colour on the page comes from here.
+ *
+ * Each colour is written once as light-dark(day, night). Which one applies follows
+ * the system, unless the page's theme toggle forces it with data-theme on <html>.
+ */
 
 :root {
   color-scheme: light dark;
 
-  --paper: #fbf6ec;
-  --speck: #eadfcb;
-  --ink: #3b2a4a;
-  --ink-soft: #7a6b86;
-  --card: #ffffff;
-  --line: #eadfcb;
-  --shadow: 0 6px 18px rgba(59, 42, 74, 0.1);
+  --paper: light-dark(#fbf6ec, #1e1a2e);
+  --speck: light-dark(#eadfcb, #2c2644);
+  --ink: light-dark(#3b2a4a, #f3ecff);
+  --ink-soft: light-dark(#7a6b86, #b9afcb);
+  --card: light-dark(#ffffff, #2a2440);
+  --line: light-dark(#eadfcb, #3a3357);
+  --shadow: 0 6px 18px light-dark(rgba(59, 42, 74, 0.1), rgba(0, 0, 0, 0.35));
 
-  --butter: #ffefb8;
-  --blush: #ffd9e3;
-  --mint: #d5f2e3;
-  --lilac: #e4dbff;
+  --butter: light-dark(#ffefb8, #4a4326);
+  --blush: light-dark(#ffd9e3, #4d2b3a);
+  --mint: light-dark(#d5f2e3, #25453a);
+  --lilac: light-dark(#e4dbff, #3a3160);
 
-  --accent: #e0568b;
-  --accent-ink: #ffffff;
-  --good: #2f8f63;
-  --warn: #b9770e;
-  --bad: #c7385f;
+  --accent: light-dark(#e0568b, #ff7fae);
+  --accent-ink: light-dark(#ffffff, #2a1020);
+  --good: light-dark(#2f8f63, #7fd6a8);
+  --warn: light-dark(#b9770e, #f0c36b);
+  --bad: light-dark(#c7385f, #ff8fa9);
 
-  --ball: #dccfff;
-  --ball-edge: #ab96ee;
-  --stand: #d9ae76;
-  --face: #4a3566;
+  --ball: light-dark(#dccfff, #8f7ed6);
+  --ball-edge: light-dark(#ab96ee, #c9bbff);
+  --stand: light-dark(#d9ae76, #9a7748);
+  --face: light-dark(#4a3566, #241b40);
 
   --radius: 14px;
   --font: ui-rounded, "SF Pro Rounded", -apple-system, "Segoe UI", sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1e1a2e;
-    --speck: #2c2644;
-    --ink: #f3ecff;
-    --ink-soft: #b9afcb;
-    --card: #2a2440;
-    --line: #3a3357;
-    --shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+:root[data-theme="light"] {
+  color-scheme: light;
+}
 
-    --butter: #4a4326;
-    --blush: #4d2b3a;
-    --mint: #25453a;
-    --lilac: #3a3160;
-
-    --accent: #ff7fae;
-    --accent-ink: #2a1020;
-    --good: #7fd6a8;
-    --warn: #f0c36b;
-    --bad: #ff8fa9;
-
-    --ball: #8f7ed6;
-    --ball-edge: #c9bbff;
-    --stand: #9a7748;
-    --face: #241b40;
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }

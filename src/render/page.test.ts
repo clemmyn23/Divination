@@ -118,6 +118,26 @@ test("mascot is in the header with the count", () => {
   assert.match(html, /<div id="needs-you" data-count="4">\s*<svg class="mascot/);
 });
 
+test("a theme toggle sits with the other controls", () => {
+  const html = renderPage({ view, entries: [] });
+  const controls = html.match(/<div id="controls">[\s\S]*?<\/div>/)![0];
+  assert.match(controls, /<button id="theme-toggle" type="button"[^>]*>/);
+});
+
+test("the script runs in the head, so a saved theme applies before anything is drawn", () => {
+  const html = renderPage({ view, entries: [] });
+  assert.ok(html.indexOf("<script>") < html.indexOf("</head>"));
+  assert.ok(html.indexOf("<style>") < html.indexOf("<script>"));
+});
+
+test("either theme can be forced, and auto follows the system", () => {
+  const themeDir = fileURLToPath(new URL("./theme/", import.meta.url));
+  const css = readFileSync(join(themeDir, "tokens.css"), "utf8");
+  for (const needle of ["color-scheme: light dark", ':root[data-theme="light"]', ':root[data-theme="dark"]', "light-dark("]) {
+    assert.ok(css.includes(needle), needle);
+  }
+});
+
 test("the needs-you list is its own short panel, not part of the header", () => {
   const src = fakeSource({
     attention: () => [{ key: "1", title: "Reply to Ana", reason: "waiting on your reply", url: "https://x.example/1" }],
@@ -169,7 +189,7 @@ test("theme defines tokens, dark mode and the phone breakpoint", () => {
   for (const needle of [
     "--paper",
     "--accent",
-    "prefers-color-scheme: dark",
+    "light-dark(",
     "max-width: 640px",
     ".tint-butter",
     ".tint-blush",

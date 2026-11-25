@@ -1,17 +1,60 @@
-// Runs in the page. Inlined by src/render/page.ts; never loaded from a URL.
+// Runs in the page. Inlined into <head> by src/render/page.ts; never loaded from a URL.
+// It runs before the body exists, so anything that needs a button waits for the page.
 
-document.addEventListener("click", async (event) => {
-  const button = event.target instanceof Element ? event.target.closest("button[data-copy]") : null;
-  if (!button) return;
+(() => {
+  const THEMES = ["auto", "light", "dark"];
+  const LABELS = { auto: "◐ Auto", light: "☀ Light", dark: "☾ Dark" };
+  const THEME_KEY = "divination-theme";
+  const root = document.documentElement;
 
-  const label = button.textContent;
-  try {
-    await navigator.clipboard.writeText(button.dataset.copy ?? "");
-    button.textContent = "Copied";
-  } catch {
-    button.textContent = "Copy failed";
+  function savedTheme() {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return THEMES.includes(saved) ? saved : "auto";
+    } catch {
+      return "auto";
+    }
   }
-  setTimeout(() => {
-    button.textContent = label;
-  }, 1500);
-});
+
+  // "auto" leaves the choice to the system; "light" and "dark" force it.
+  function applyTheme(theme) {
+    if (theme === "auto") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    const toggle = document.getElementById("theme-toggle");
+    if (toggle) toggle.textContent = LABELS[theme];
+  }
+
+  let theme = savedTheme();
+  applyTheme(theme); // sets the theme before anything is drawn
+  document.addEventListener("DOMContentLoaded", () => applyTheme(theme)); // labels the button once it exists
+
+  document.addEventListener("click", async (event) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+
+    if (target.closest("#theme-toggle")) {
+      theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
+      try {
+        localStorage.setItem(THEME_KEY, theme);
+      } catch {
+        // Storage can be blocked; the choice then lasts until the page reloads.
+      }
+      applyTheme(theme);
+      return;
+    }
+
+    const copy = target.closest("button[data-copy]");
+    if (copy) {
+      const label = copy.textContent;
+      try {
+        await navigator.clipboard.writeText(copy.dataset.copy ?? "");
+        copy.textContent = "Copied";
+      } catch {
+        copy.textContent = "Copy failed";
+      }
+      setTimeout(() => {
+        copy.textContent = label;
+      }, 1500);
+    }
+  });
+})();

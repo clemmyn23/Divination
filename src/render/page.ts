@@ -113,6 +113,9 @@ export function renderPage(input: { view: View; entries: PageEntry[] }): string 
 <style>
 ${styles()}
 </style>
+<script>
+${readFileSync(clientScript, "utf8")}
+</script>
 </head>
 <body>
 <header>
@@ -120,6 +123,7 @@ ${styles()}
 <button id="live-toggle" type="button">Pause</button>
 <button id="refresh-now" type="button">Refresh now</button>
 <span id="live-status"></span>
+<button id="theme-toggle" type="button" title="Switch between following the system, light and dark">◐ Auto</button>
 </div>
 <div class="masthead">
 <h1>Divination</h1>
@@ -131,9 +135,6 @@ ${needsYouBadge(attention.length)}
 ${attentionPanel(attention)}
 ${sections.join("\n")}
 </main>
-<script>
-${readFileSync(clientScript, "utf8")}
-</script>
 </body>
 </html>
 `;
