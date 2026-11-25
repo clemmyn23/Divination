@@ -40,6 +40,7 @@
 
   let online = false;
   let seenRenderedAt = null; // the page file's timestamp when this page was loaded
+  let seenStartedAt = null; // when the server that this page first heard from started
   let lastFinishedAt = null; // when the last job we know of finished
   let pending = null; // { button, label, since }: a sparkle button waiting on its job
 
@@ -63,12 +64,16 @@
   function show(status) {
     online = true;
 
-    if (seenRenderedAt !== null && status.renderedAt !== seenRenderedAt) {
-      seenRenderedAt = status.renderedAt;
-      location.reload(); // a newer page exists; show it
+    // A newer page exists, or the server restarted and this page's token is no longer good.
+    const changed =
+      (seenRenderedAt !== null && status.renderedAt !== seenRenderedAt) ||
+      (seenStartedAt !== null && status.startedAt !== seenStartedAt);
+    seenRenderedAt = status.renderedAt;
+    seenStartedAt = status.startedAt;
+    if (changed) {
+      location.reload();
       return;
     }
-    seenRenderedAt = status.renderedAt;
 
     const busy = status.job !== null;
     const finishedAt = status.lastJob ? status.lastJob.finishedAt : null;

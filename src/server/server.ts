@@ -52,6 +52,7 @@ const ROUTES: Record<string, "GET" | "POST"> = {
  */
 export function createApp(ctx: Context, sources: Source<any>[], token: string, timers?: Timers) {
   const jobs = createJobs(ctx.now);
+  const startedAt = ctx.now(); // changes on every restart, which tells an open page to reload
   const port = ctx.config.server.port;
   const ownHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
 
@@ -66,6 +67,7 @@ export function createApp(ctx: Context, sources: Source<any>[], token: string, t
   const status = () => ({
     ...live.state(),
     renderedAt: existsSync(ctx.paths.site) ? statSync(ctx.paths.site).mtimeMs : 0,
+    startedAt,
     job: jobs.current(),
     lastJob: jobs.last(),
   });

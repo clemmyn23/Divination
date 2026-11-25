@@ -83,7 +83,8 @@ test("posts without the token are refused and do nothing", async () => {
 test("status reports the timer, the page and the jobs", async () => {
   const { status, body } = await json(req("GET", "/api/status"));
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body).sort(), ["job", "lastJob", "live", "nextTickAt", "renderedAt"]);
+  assert.deepEqual(Object.keys(body).sort(), ["job", "lastJob", "live", "nextTickAt", "renderedAt", "startedAt"]);
+  assert.equal(body.startedAt, ctx.now());
   assert.deepEqual([body.live, body.nextTickAt, body.job, body.lastJob], [true, null, null, null]);
 });
 

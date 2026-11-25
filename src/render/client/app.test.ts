@@ -31,11 +31,12 @@ interface Status {
   live: boolean;
   nextTickAt: number | null;
   renderedAt: number;
+  startedAt: number;
   job: { name: string; startedAt: number } | null;
   lastJob: { name: string; ok: boolean; error?: string; finishedAt: number } | null;
 }
 
-const LIVE: Status = { live: true, nextTickAt: Date.parse("2026-11-25T03:15:00Z"), renderedAt: 100, job: null, lastJob: null };
+const LIVE: Status = { live: true, nextTickAt: Date.parse("2026-11-25T03:15:00Z"), renderedAt: 100, startedAt: 50, job: null, lastJob: null };
 
 interface Options {
   storageBroken?: boolean;
@@ -270,6 +271,17 @@ test("the page reloads itself when a newer page has been rendered, and only then
   assert.equal(p.reloads, 0);
 
   p.server.status = { ...LIVE, renderedAt: 200 };
+  await p.poll();
+  assert.equal(p.reloads, 1);
+});
+
+test("the page reloads itself when the server has restarted, to pick up its new token", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.poll();
+  assert.equal(p.reloads, 0);
+
+  p.server.status = { ...LIVE, startedAt: 60 };
   await p.poll();
   assert.equal(p.reloads, 1);
 });
