@@ -132,3 +132,72 @@ test("doctor walks through token, sign-in, config and each conversation", async 
   assert.match(conversations.detail, /svc-alerts.*channel_not_found/);
   assert.ok(!/sekrit/.test(JSON.stringify([none, good, bad])));
 });
+
+// ---- Task 9: what collect adds on top of the raw read ----
+
+/** The routes with one method made to fail. */
+function failing(method: string): Record<string, unknown> {
+  return { ...slackRoutes(), [`${API}${method}`]: { ok: false, error: "missing_scope" } };
+}
+
+test("channels I posted in lately are read too, under Posted in", async () => {
+  const routes = slackRoutes();
+  routes[`${API}conversations.history?channel=C7`] = { ok: true, messages: [{ ts: "1795562500.000600", user: "U1", text: "Prune the noise." }] };
+  const withDeploys = fakeHttp(routes);
+  const data = await collectSlack(contextWith(SLACK_LOCAL, { http: withDeploys, secrets: token }));
+  assert.deepEqual(data.conversations.at(-1), { id: "C7", name: "deploys", group: "Posted in", kind: "channel" });
+  assert.ok(data.threads.some((t) => t.channelId === "C7"));
+  const search = decodeURIComponent(withDeploys.calls.find((u) => u.includes("search.messages"))!);
+  assert.ok(search.includes("after:2026-11-22")); // three days before Wednesday the 25th
+});
+
+test("a failing search does not fail the collect", async () => {
+  const data = await collectSlack({ ...ctx, http: fakeHttp(failing("search.messages")) });
+  assert.ok(data.threads.length > 0);
+  assert.ok(!data.conversations.some((c) => c.group === "Posted in"));
+});
+
+test("a posted-in channel that cannot be read is dropped, not fatal", async () => {
+  const data = await collectSlack(ctx); // the fixture has no history route for C7
+  assert.ok(!data.conversations.some((c) => c.id === "C7"));
+  assert.ok(data.threads.length > 0);
+});
+
+test("alert channels are counted since the start of today", async () => {
+  const data = await collectSlack(ctx);
+  assert.deepEqual(
+    data.alerts.C2!.map((r) => [r.title, r.count, r.state]),
+    [["Triggered: 5xx rate on checkout", 1, "firing"]], // the recovery was on Sunday
+  );
+});
+
+test("each thread is checked for whether it needs me", async () => {
+  const routes = slackRoutes();
+  routes[`${API}conversations.history?channel=C1`] = { ok: true, messages: [{ ts: "1795562600.000700", user: "U1", text: "<@ME> can you look?" }, { ts: "1795540000.000100", user: "U2", text: "Staging is back." }] };
+  const data = await collectSlack(contextWith(SLACK_LOCAL, { http: fakeHttp(routes), secrets: token }));
+  assert.deepEqual(
+    data.threads.filter((t) => t.channelId === "C1").map((t) => t.needsYou),
+    [undefined, "mentioned you"],
+  );
+});
+
+test("a direct message is one conversation: answering later clears it, and the newest unanswered run is shown", async () => {
+  const dm = (messages: object[]) => {
+    const routes = slackRoutes();
+    routes[`${API}conversations.history?channel=D1`] = { ok: true, messages };
+    return collectSlack(contextWith(SLACK_LOCAL, { http: fakeHttp(routes), secrets: token }));
+  };
+  // newest first, as Slack sends it
+  const answered = await dm([{ ts: "1795561200.000500", user: "ME", text: "Sure, at 3." }, { ts: "1795561000.000400", user: "U2", text: "Do you have ten minutes?" }]);
+  assert.deepEqual(answered.threads.filter((t) => t.channelId === "D1").map((t) => [t.needsYou, t.excerpt]), [[undefined, "Sure, at 3."]]);
+
+  const waiting = await dm([
+    { ts: "1795561400.000700", user: "U2", text: "Actually make it 4?" },
+    { ts: "1795561300.000600", user: "U2", text: "Thanks!" },
+    { ts: "1795561200.000500", user: "ME", text: "Sure, at 3." },
+    { ts: "1795561000.000400", user: "U2", text: "Do you have ten minutes?" },
+  ]);
+  const [thread] = waiting.threads.filter((t) => t.channelId === "D1");
+  assert.deepEqual([thread!.needsYou, thread!.excerpt, thread!.messageCount, thread!.latestTs], ["waiting on your reply", "Thanks!", 2, "1795561400.000700"]);
+  assert.equal(thread!.url, "https://w.slack.com/archives/D1/p1795561300000600");
+});

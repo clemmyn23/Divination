@@ -2,6 +2,8 @@ import type { Check, Context, Source } from "../../core/types.ts";
 import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
 import { conversationsFromConfig } from "./normalise.ts";
+import { slackPanels, threadKey, tsMs } from "./panel.ts";
+import { slackSummary } from "./summary.enricher.ts";
 import type { SlackData } from "./types.ts";
 
 const SET_IT = "create the app from docs/slack-app-manifest.json, install it, then run: divination secret set slack";
@@ -63,6 +65,16 @@ export const slack: Source<SlackData> = {
   doctor,
   collect: collectSlack,
   validate,
-  attention: () => [],
-  panels: () => [],
+  attention: (data) => {
+    const byId = new Map(data.conversations.map((c) => [c.id, c]));
+    return data.threads
+      .filter((t) => t.needsYou !== undefined)
+      .map((t) => {
+        const conversation = byId.get(t.channelId);
+        const title = conversation ? (conversation.kind === "dm" ? conversation.name : `#${conversation.name}`) : t.channelId;
+        return { key: threadKey(t), title, reason: t.needsYou!, url: t.url, at: tsMs(t.latestTs) };
+      });
+  },
+  panels: slackPanels,
+  enrichers: [slackSummary],
 };

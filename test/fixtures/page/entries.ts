@@ -1,30 +1,19 @@
 // A sample page with invented content, used by `divination render --fixtures` to work on
-// the look. Each stand-in source below is replaced by the real source and a JSON envelope
-// as that source lands.
+// the look. Every panel is drawn by its real source from the invented data below.
 
 import { isoDate, startOfDay } from "../../../src/core/time.ts";
-import type { Envelope, Panel, Source } from "../../../src/core/types.ts";
+import type { Envelope, Source } from "../../../src/core/types.ts";
 import { dayClass, headline } from "../../../src/sources/calendar/day.ts";
 import { calendar } from "../../../src/sources/calendar/index.ts";
 import type { CalEvent, CalendarData } from "../../../src/sources/calendar/types.ts";
 import { github } from "../../../src/sources/github/index.ts";
 import type { Bucket, Ci, GithubData, PullRequest, Request } from "../../../src/sources/github/types.ts";
+import { slack } from "../../../src/sources/slack/index.ts";
+import type { AlertCount, SlackData, SlackThread } from "../../../src/sources/slack/types.ts";
 
 interface Entry {
   source: Source<any>;
   envelope: Envelope<any>;
-}
-
-function standIn(id: string, title: string, panels: Panel[], attention: Source<any>["attention"] = () => []): Source<any> {
-  return {
-    id,
-    title,
-    doctor: async () => [],
-    collect: async () => ({}),
-    validate: () => [],
-    attention,
-    panels: () => panels,
-  };
 }
 
 // Today is drawn by the real calendar source from these invented meetings.
@@ -126,70 +115,89 @@ export function fixtureEnrich(): Record<string, Record<string, unknown>> {
   };
 }
 
-const slack: Panel = {
-  id: "slack",
-  title: "Slack",
-  tint: "mint",
-  html: `<button type="button" data-enrich="slack-summary" data-key="all">Summarise threads</button>
-<h3 class="group">Team</h3>
-<ul class="items">
-<li class="item thread needs-you"><a href="https://example.slack.com/archives/C1/p1" target="_blank" rel="noopener noreferrer">Sam, can you confirm the rollout order for the tax service before 3?</a>
-<p class="meta">#team-dev · Ana, Kit · 4 · mentioned you</p></li>
-<li class="item thread needs-you"><a href="https://example.slack.com/archives/D1/p3" target="_blank" rel="noopener noreferrer">Do you have ten minutes after planning?</a>
-<p class="meta">Ana · 1 · waiting on your reply</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C1/p2" target="_blank" rel="noopener noreferrer">Staging is back after the certificate renewal.</a>
-<p class="meta">#team-dev · Rio · 2</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C5/p8" target="_blank" rel="noopener noreferrer">The brand hub loading animation is in the design file now, ring version.</a>
-<p class="meta">#project-hub · Yui · 3</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C5/p9" target="_blank" rel="noopener noreferrer">Agency view: do we want the ring or the dot for the default?</a>
-<p class="meta">#project-hub · Yui, Mo · 6</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C6/p10" target="_blank" rel="noopener noreferrer">Retro notes are up. Two actions carried over from last sprint.</a>
-<p class="meta">#team-prod · Jo · 1</p></li>
-</ul>
-<h3 class="group">Starred</h3>
-<ul class="items">
-<li class="item thread"><a href="https://example.slack.com/archives/C3/p4" target="_blank" rel="noopener noreferrer">Proposal: move the build to the new bundler. The diff is mostly lockfiles.</a>
-<p class="meta">#frontend · Kit, Lee, Mo · 9</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C3/p11" target="_blank" rel="noopener noreferrer">Heads up: the shared button component changes its focus ring next release.</a>
-<p class="meta">#frontend · Lee · 2</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C7/p12" target="_blank" rel="noopener noreferrer">Who is on review rotation next week? I am out Thursday and Friday.</a>
-<p class="meta">#crew-members · Ana, Rio · 5</p></li>
-</ul>
-<h3 class="group">Sydney</h3>
-<ul class="items">
-<li class="item thread"><a href="https://example.slack.com/archives/C8/p13" target="_blank" rel="noopener noreferrer">Lift 2 is out of service until Friday. Use the goods lift for deliveries.</a>
-<p class="meta">#syd-office · Pat · 1</p></li>
-<li class="item thread"><a href="https://example.slack.com/archives/C8/p14" target="_blank" rel="noopener noreferrer">Friday lunch is dumplings. Add dietary needs to the thread by Thursday.</a>
-<p class="meta">#syd-office · Pat, Jo, Kit · 12</p></li>
-</ul>
-<h3 class="group">Posted in</h3>
-<ul class="items">
-<li class="item thread"><a href="https://example.slack.com/archives/C9/p15" target="_blank" rel="noopener noreferrer">Prune the noise: the deploy bot now posts one message per release.</a>
-<p class="meta">#deploys · Sam, Rio · 4</p></li>
-</ul>`,
-};
+// Slack and Alerts are drawn by the real Slack source from these invented threads.
+const WORKSPACE = "https://example.slack.com";
 
-const alerts: Panel = {
-  id: "alerts",
-  title: "Alerts",
-  tint: "lilac",
-  html: `<h4 class="conv">#svc-alerts</h4>
-<ul class="alert-rows">
-<li class="alert state-firing"><span class="times">×3</span> <a href="https://example.slack.com/archives/C2/p5" target="_blank" rel="noopener noreferrer">Triggered: 5xx rate on checkout</a> <span class="state">firing</span></li>
-<li class="alert state-firing"><span class="times">×1</span> <a href="https://example.slack.com/archives/C2/p16" target="_blank" rel="noopener noreferrer">Triggered: p95 latency on audience search</a> <span class="state">firing</span></li>
-<li class="alert state-resolved"><span class="times">×1</span> <a href="https://example.slack.com/archives/C2/p6" target="_blank" rel="noopener noreferrer">Recovered: queue depth</a> <span class="state">resolved</span></li>
-</ul>
-<h4 class="conv">#sequence-alerts</h4>
-<ul class="alert-rows">
-<li class="alert state-firing"><span class="times">×7</span> <a href="https://example.slack.com/archives/C10/p17" target="_blank" rel="noopener noreferrer">Sequence step failed: send window missed</a> <span class="state">firing</span></li>
-<li class="alert state-resolved"><span class="times">×2</span> <a href="https://example.slack.com/archives/C10/p18" target="_blank" rel="noopener noreferrer">Recovered: sequence scheduler lag</a> <span class="state">resolved</span></li>
-</ul>
-<h4 class="conv">#monthly-monitor</h4>
-<ul class="alert-rows">
-<li class="alert state-info"><span class="times">×1</span> <a href="https://example.slack.com/archives/C4/p7" target="_blank" rel="noopener noreferrer">Monthly usage report</a> <span class="state">info</span></li>
-</ul>
-<p class="quiet">Quiet today: #crm-alerts, #ucf-alerts, #ucf-alerts-dev, #partner-alerting</p>`,
-};
+function chat(
+  channelId: string,
+  n: number,
+  minutesAgo: number,
+  excerpt: string,
+  authors: string[],
+  messageCount: number,
+  needsYou?: string,
+): (now: number) => SlackThread {
+  return (now) => {
+    const ts = `${Math.floor((now - minutesAgo * 60_000) / 1000)}.${String(n).padStart(6, "0")}`;
+    return {
+      channelId,
+      ts,
+      url: `${WORKSPACE}/archives/${channelId}/p${ts.replace(".", "")}`,
+      authors,
+      excerpt,
+      text: authors.map((name) => `${name}: …`).join("\n"),
+      messageCount,
+      latestTs: ts,
+      ...(needsYou ? { needsYou } : {}),
+    };
+  };
+}
+
+const chats = [
+  chat("C1", 1, 35, "Sam, can you confirm the rollout order for the tax service before 3?", ["Ana", "Kit"], 4, "mentioned you"),
+  chat("D1", 3, 20, "Do you have ten minutes after planning?", ["Ana"], 1, "waiting on your reply"),
+  chat("C1", 2, 50, "Staging is back after the certificate renewal.", ["Rio"], 2),
+  chat("C5", 8, 70, "The brand hub loading animation is in the design file now, ring version.", ["Yui"], 3),
+  chat("C5", 9, 95, "Agency view: do we want the ring or the dot for the default?", ["Yui", "Mo"], 6),
+  chat("C6", 10, 120, "Retro notes are up. Two actions carried over from last sprint.", ["Jo"], 1),
+  chat("C3", 4, 40, "Proposal: move the build to the new bundler. The diff is mostly lockfiles.", ["Kit", "Lee", "Mo"], 9),
+  chat("C3", 11, 80, "Heads up: the shared button component changes its focus ring next release.", ["Lee"], 2),
+  chat("C7", 12, 100, "Who is on review rotation next week? I am out Thursday and Friday.", ["Ana", "Rio"], 5),
+  chat("C8", 13, 60, "Lift 2 is out of service until Friday. Use the goods lift for deliveries.", ["Pat"], 1),
+  chat("C8", 14, 110, "Friday lunch is dumplings. Add dietary needs to the thread by Thursday.", ["Pat", "Jo", "Kit"], 12),
+  chat("C9", 15, 30, "Prune the noise: the deploy bot now posts one message per release.", ["Sam", "Rio"], 4),
+];
+
+const alertRow = (channelId: string, n: number, title: string, count: number, state: AlertCount["state"]): AlertCount => ({
+  title,
+  count,
+  state,
+  latestTs: `${n}.000100`,
+  url: `${WORKSPACE}/archives/${channelId}/p${n}`,
+});
+
+function slackAt(now: number): SlackData {
+  const channel = (id: string, name: string, group: string, kind: "channel" | "dm" | "alerts" = "channel") => ({ id, name, group, kind });
+  return {
+    conversations: [
+      channel("C1", "team-dev", "Team"),
+      channel("D1", "Ana", "Team", "dm"),
+      channel("C5", "project-hub", "Team"),
+      channel("C6", "team-prod", "Team"),
+      channel("C3", "frontend", "Starred"),
+      channel("C7", "crew-members", "Starred"),
+      channel("C8", "syd-office", "Sydney"),
+      channel("C2", "svc-alerts", "Alerts", "alerts"),
+      channel("C10", "sequence-alerts", "Alerts", "alerts"),
+      channel("C4", "monthly-monitor", "Alerts", "alerts"),
+      channel("C11", "crm-alerts", "Alerts", "alerts"),
+      channel("C12", "ucf-alerts", "Alerts", "alerts"),
+      channel("C13", "ucf-alerts-dev", "Alerts", "alerts"),
+      channel("C14", "partner-alerting", "Alerts", "alerts"),
+      channel("C9", "deploys", "Posted in"),
+    ],
+    threads: chats.map((make) => make(now)),
+    alerts: {
+      C2: [
+        alertRow("C2", 5, "Triggered: 5xx rate on checkout", 3, "firing"),
+        alertRow("C2", 16, "Triggered: p95 latency on audience search", 1, "firing"),
+        alertRow("C2", 6, "Recovered: queue depth", 1, "resolved"),
+      ],
+      C10: [alertRow("C10", 17, "Sequence step failed: send window missed", 7, "firing"), alertRow("C10", 18, "Recovered: sequence scheduler lag", 2, "resolved")],
+      C4: [alertRow("C4", 7, "Monthly usage report", 1, "info")],
+    },
+  };
+}
 
 function envelope(id: string, collectedAt: number, error?: string): Envelope<any> {
   return { source: id, ok: error === undefined, ...(error ? { error } : {}), collectedAt, attemptedAt: collectedAt, data: {} };
@@ -201,14 +209,6 @@ export function fixtureEntries(now: number, tz = "Australia/Sydney"): Entry[] {
   return [
     { source: calendar, envelope: { ...envelope("calendar", now - 4 * minute), data: dayAt(now, tz) } },
     { source: github, envelope: { ...envelope("github", now - 4 * minute), data: queueAt(now) } },
-    {
-      source: standIn("slack", "Slack", [slack], () => [
-        { key: "C1:1", title: "#team-dev", reason: "mentioned you", url: "https://example.slack.com/archives/C1/p1" },
-        { key: "D1:3", title: "Ana", reason: "waiting on your reply", url: "https://example.slack.com/archives/D1/p3" },
-      ]),
-      envelope: envelope("slack", now - 4 * minute),
-    },
-    // Deliberately old and failing, to show what a dozing panel looks like.
-    { source: standIn("alerts", "Alerts", [alerts]), envelope: envelope("alerts", now - 190 * minute, "cannot reach slack.com: fetch failed") },
+    { source: slack, envelope: { ...envelope("slack", now - 4 * minute), data: slackAt(now) } },
   ];
 }

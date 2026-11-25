@@ -23,7 +23,8 @@ export function plainText(text: string, names: Record<string, string>): string {
     .replace(/&amp;/g, "&");
 }
 
-function cut(text: string, max: number): string {
+/** At most `max` characters, ending in an ellipsis when something was cut. */
+export function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 

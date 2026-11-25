@@ -36,6 +36,8 @@ export interface SlackThread {
   latestTs: string;
   /** Why this thread is waiting on me, when it is. */
   needsYou?: string;
+  /** One line on what the thread is about, when whoever read it already wrote one. */
+  summary?: string;
 }
 
 export interface AlertCount {

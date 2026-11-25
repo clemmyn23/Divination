@@ -1,5 +1,9 @@
+import { isoDate, startOfDay } from "../../core/time.ts";
 import type { Context } from "../../core/types.ts";
+import { countAlerts } from "./alerts.ts";
 import { createSlack } from "./client.ts";
+import { dynamicConversations } from "./dynamic.ts";
+import { needsYou } from "./needs-you.ts";
 import { conversationsFromConfig, toThread } from "./normalise.ts";
 import type { SlackConversation, SlackData, SlackMessage, SlackThread } from "./types.ts";
 
@@ -43,30 +47,80 @@ async function gather(slack: ReturnType<typeof createSlack>, conversation: Slack
   return { conversation, parents, threads };
 }
 
+const DAY = 86_400_000;
+
 /**
- * Read every configured conversation over the last `slack.windowHours` and turn it into
- * threads. Alert conversations produce no threads.
+ * A direct message is one running conversation, not a set of threads: what matters is
+ * whether the last word is mine. It becomes a single thread made of whatever was said
+ * since I last spoke (or just my last message, when I spoke last).
+ */
+function dmThread(conversation: SlackConversation, messages: SlackMessage[], me: string, names: Record<string, string>, workspaceUrl: string): SlackThread {
+  let myLast = -1;
+  messages.forEach((m, i) => {
+    if (m.user === me) myLast = i;
+  });
+  const unanswered = messages.slice(myLast + 1);
+  const thread = toThread(conversation, unanswered.length > 0 ? unanswered : [messages[messages.length - 1]!], names, workspaceUrl);
+  const reason = needsYou(messages, me, "dm");
+  return reason ? { ...thread, needsYou: reason } : thread;
+}
+
+/**
+ * Read every configured conversation over the last `slack.windowHours`, plus the channels
+ * I posted in lately, and turn them into threads, each checked for whether it is waiting
+ * on me. Alert conversations produce no threads; today's alerts are counted by title.
  */
 export async function collectSlack(ctx: Context): Promise<SlackData> {
   const slack = createSlack(ctx);
-  const { windowHours, workspaceUrl } = ctx.config.slack;
-  const conversations = conversationsFromConfig(ctx.config);
-  const oldest = String((ctx.now() - windowHours * 3_600_000) / 1000);
+  const { windowHours, workspaceUrl, userId, dynamic, alerts: patterns } = ctx.config.slack;
+  const tz = ctx.config.me.timezone;
+  const now = ctx.now();
+  const configured = conversationsFromConfig(ctx.config);
+  const oldest = String((now - windowHours * 3_600_000) / 1000);
 
-  const gathered = await mapLimited(conversations, (c) => gather(slack, c, oldest));
+  // Channels I posted in lately. Search needs its own scope; without it, carry on without them.
+  let posted: SlackConversation[] = [];
+  try {
+    const found = await slack.searchFromMe(isoDate(now - dynamic.postedWithinDays * DAY, tz));
+    posted = dynamicConversations(found, configured, dynamic.exclude);
+  } catch {
+    posted = [];
+  }
+
+  const gathered = [
+    ...(await mapLimited(configured, (c) => gather(slack, c, oldest))),
+    // A posted-in channel that cannot be read is left out rather than failing everything.
+    ...(await mapLimited(posted, (c) => gather(slack, c, oldest).catch(() => undefined))).filter((g): g is Gathered => g !== undefined),
+  ];
 
   const names: Record<string, string> = {};
+  const learn = async (messages: SlackMessage[]) => {
+    for (const m of messages) {
+      if (m.user && names[m.user] === undefined) names[m.user] = await slack.userName(m.user);
+    }
+  };
+
   const threads: SlackThread[] = [];
+  const alerts: SlackData["alerts"] = {};
   for (const { conversation, parents, threads: replies } of gathered) {
-    if (conversation.kind === "alerts") continue;
+    if (conversation.kind === "alerts") {
+      alerts[conversation.id] = countAlerts(parents, patterns, workspaceUrl, conversation.id, startOfDay(now, tz));
+      continue;
+    }
+    if (conversation.kind === "dm") {
+      if (parents.length === 0) continue;
+      await learn(parents);
+      threads.push(dmThread(conversation, parents, userId, names, workspaceUrl));
+      continue;
+    }
     for (const parent of parents) {
       const messages = replies.get(parent.ts) ?? [parent];
-      for (const m of messages) {
-        if (m.user && names[m.user] === undefined) names[m.user] = await slack.userName(m.user);
-      }
-      threads.push(toThread(conversation, messages, names, workspaceUrl));
+      await learn(messages);
+      const thread = toThread(conversation, messages, names, workspaceUrl);
+      const reason = needsYou(messages, userId, conversation.kind);
+      threads.push(reason ? { ...thread, needsYou: reason } : thread);
     }
   }
 
-  return { conversations, threads, alerts: {} };
+  return { conversations: gathered.map((g) => g.conversation), threads, alerts };
 }
