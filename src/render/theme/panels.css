@@ -217,6 +217,11 @@
   background: var(--tint, var(--lilac));
 }
 
+/* Raised by a crew member: may bypass the crew's review. */
+.tag.crew {
+  background: var(--mint);
+}
+
 .ci-pass {
   color: var(--good);
 }

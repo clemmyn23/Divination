@@ -35,6 +35,8 @@ export interface Config {
     transport: Transport;
     host: string;
     rotationTeam: string;
+    /** GitHub usernames of the review crew's members. A PR one of them raises may bypass the crew's review. */
+    crewMembers: string[];
     review: { model: string };
     rank: { riskPaths: RiskPath[]; docsPattern: string; quickWinMaxLines: number; largeLines: number };
     slackSignal: { channelId: string; skipReactions: string[] };
@@ -44,6 +46,8 @@ export interface Config {
     workspaceUrl: string;
     userId: string;
     windowHours: number;
+    /** Authors (names, or bot ids) whose threads are left out when nobody else wrote in them. */
+    muteAuthors: string[];
     groups: SlackGroupConfig[];
     dynamic: { postedWithinDays: number; exclude: string[] };
     alerts: { firing: string; resolved: string };

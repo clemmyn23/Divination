@@ -37,6 +37,8 @@ export interface PullRequest {
   request: Request;
   reviewedByMeAtHead: boolean;
   signal?: Signal;
+  /** Raised by a member of the review crew, so it may bypass the crew's review. */
+  byCrew?: boolean;
   rank: Rank;
 }
 

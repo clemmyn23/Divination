@@ -3,6 +3,9 @@ import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import type { Bucket, Ci, GithubData, PullRequest } from "./types.ts";
 
+/** The lozenge on a PR raised by a member of the review crew: such a PR may bypass the crew's review. */
+export const CREW = "raised by crew member";
+
 /** The buckets that count as waiting on me. */
 export const NEEDS_YOU: Bucket[] = ["review_now", "quick_win", "flagged"];
 
@@ -68,6 +71,7 @@ function meta(pr: PullRequest): string {
     size,
     `<span class="ci-${pr.ci}">${CI_TEXT[pr.ci]}</span>`,
     `<span class="tag">${esc(pr.request)}</span>`,
+    ...(pr.byCrew ? [`<span class="tag crew">${CREW}</span>`] : []),
     ...(why ? [esc(why)] : []),
   ];
   return `<p class="meta">${parts.join(" · ")}</p>`;

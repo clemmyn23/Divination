@@ -74,6 +74,16 @@ function problemsIn(config: Config): string[] {
     }
   }
 
+  const crew: unknown = config.github?.crewMembers;
+  if (!Array.isArray(crew) || !crew.every((name) => typeof name === "string")) {
+    problems.push(`github.crewMembers must be a list of GitHub usernames (got ${shown(crew)})`);
+  }
+
+  const muted: unknown = config.slack?.muteAuthors;
+  if (!Array.isArray(muted) || !muted.every((name) => typeof name === "string")) {
+    problems.push(`slack.muteAuthors must be a list of names (got ${shown(muted)})`);
+  }
+
   const groups: unknown = config.slack?.groups;
   if (!Array.isArray(groups)) {
     problems.push("slack.groups must be a list");

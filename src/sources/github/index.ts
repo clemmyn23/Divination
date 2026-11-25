@@ -1,7 +1,7 @@
 import type { Check, Context, Source } from "../../core/types.ts";
 import { createGithub } from "./client.ts";
 import { collectGithub } from "./collect.ts";
-import { NEEDS_YOU, githubPanels } from "./panel.ts";
+import { CREW, NEEDS_YOU, githubPanels } from "./panel.ts";
 import { prReview } from "./review.enricher.ts";
 import type { GithubData } from "./types.ts";
 
@@ -52,7 +52,7 @@ export const github: Source<GithubData> = {
   attention: (data) =>
     data.prs
       .filter((pr) => NEEDS_YOU.includes(pr.rank.bucket))
-      .map((pr) => ({ key: pr.key, title: pr.title, reason: pr.rank.reasons.join(", "), url: pr.url, at: pr.createdAt })),
+      .map((pr) => ({ key: pr.key, title: pr.title, reason: [...pr.rank.reasons, ...(pr.byCrew ? [CREW] : [])].join(", "), url: pr.url, at: pr.createdAt })),
   panels: githubPanels,
   enrichers: [prReview],
 };

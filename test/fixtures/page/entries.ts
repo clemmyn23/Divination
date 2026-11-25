@@ -74,7 +74,7 @@ const queue: GithubData = {
   login: "sam",
   prs: [
     pr(412, "Move invoice totals to the new tax service", "ana", [640, 210], "pass", "rotation", "review_now", ["touches billing", "large change", "rotation", "4 days old", "CI passing"], 9),
-    pr(418, "Add keyboard support to the date picker", "kit", [180, 35], "pending", "direct", "review_now", [], 0),
+    { ...pr(418, "Add keyboard support to the date picker", "kit", [180, 35], "pending", "rotation", "review_now", ["rotation"], 0), byCrew: true },
     pr(421, "Fix typo in empty state", "sam-b", [2, 2], "pass", "rotation", "quick_win", ["quick win", "rotation", "CI passing"], 3),
     pr(423, "Show a spinner while the audience list loads", "lee", [64, 9], "pass", "rotation", "quick_win", ["quick win", "rotation", "CI passing"], 3),
     pr(397, "Rate-limit the export endpoint", "rio", [95, 12], "fail", "team", "blocked", ["CI failing"], 0),

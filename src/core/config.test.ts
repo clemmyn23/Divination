@@ -37,3 +37,15 @@ test("inboxStaleAfterMinutes defaults to twelve hours and must be a positive num
   assert.throws(() => loadConfig(tempRoot({ inboxStaleAfterMinutes: 0 })), /inboxStaleAfterMinutes/);
   assert.throws(() => loadConfig(tempRoot({ inboxStaleAfterMinutes: "720" })), /inboxStaleAfterMinutes/);
 });
+
+test("crew members default to none and must be a list of GitHub usernames", () => {
+  assert.deepEqual(loadConfig(tempRoot()).github.crewMembers, []);
+  assert.deepEqual(loadConfig(tempRoot({ github: { crewMembers: ["sha", "kit"] } })).github.crewMembers, ["sha", "kit"]);
+  assert.throws(() => loadConfig(tempRoot({ github: { crewMembers: "sha" } })), /github\.crewMembers/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crewMembers: ["sha", 7] } })), /github\.crewMembers/);
+});
+
+test("muted Slack authors default to none and must be a list of names", () => {
+  assert.deepEqual(loadConfig(tempRoot()).slack.muteAuthors, []);
+  assert.throws(() => loadConfig(tempRoot({ slack: { muteAuthors: "Google Calendar" } })), /slack\.muteAuthors/);
+});

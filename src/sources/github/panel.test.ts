@@ -170,3 +170,15 @@ test("PRs that need you become needs-you items with their reasons", () => {
   ]);
   assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs"]);
 });
+
+test("a PR raised by a crew member carries a lozenge on its meta line, and says so where it needs me", () => {
+  const data: GithubData = { login: "me", prs: [pr(1, "review_now", { byCrew: true }), pr(2, "review_now")] };
+  const html = githubPanels(data, view)[0]!.html;
+  assert.equal(html.match(/<span class="tag crew">raised by crew member<\/span>/g)!.length, 1);
+  const first = html.slice(html.indexOf("Change 1"), html.indexOf("Change 2"));
+  assert.ok(first.includes('<span class="tag">rotation</span> · <span class="tag crew">raised by crew member</span>'));
+
+  const reasons = github.attention(data, view).map((a) => a.reason);
+  assert.ok(reasons[0]!.endsWith("raised by crew member"));
+  assert.ok(!reasons[1]!.includes("crew member"));
+});

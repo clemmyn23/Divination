@@ -59,6 +59,7 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
   // What the review channel says about each PR, read once for the whole queue.
   const review = await reviewPosts(ctx);
   const { skipReactions } = ctx.config.github.slackSignal;
+  const crew = new Set(ctx.config.github.crewMembers.map((name) => name.toLowerCase()));
 
   const cachePath = ctx.paths.cache("github", "facts.json");
   const cached = readJson<Record<string, Facts>>(cachePath, {});
@@ -91,6 +92,7 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
       request: classifyRequest(facts.requests, login, ctx.config.github.rotationTeam),
       reviewedByMeAtHead: facts.reviewedByMeAtHead,
       ...(signal ? { signal } : {}),
+      ...(crew.has(hit.author.toLowerCase()) ? { byCrew: true } : {}),
     };
     return { ...pr, rank: rankPull(pr, ctx.config.github.rank, login, ctx.now()) };
   });

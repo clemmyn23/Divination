@@ -11,6 +11,7 @@
     "transport": "api",
     "host": "",
     "rotationTeam": "",
+    "crewMembers": [],
     "review": { "model": "opus" },
     "rank": {
       "riskPaths": [
@@ -30,6 +31,7 @@
     "workspaceUrl": "",
     "userId": "",
     "windowHours": 72,
+    "muteAuthors": [],
     "groups": [],
     "dynamic": { "postedWithinDays": 3, "exclude": [] },
     "alerts": {

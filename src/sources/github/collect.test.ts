@@ -202,3 +202,12 @@ test("doctor reports an API that does not answer", async () => {
   assert.deepEqual(checks.map((c) => [c.name, c.ok]), [["host", true], ["gh login", true], ["api", false]]);
   assert.match(checks[2]!.detail, /cannot reach git\.example\.com/);
 });
+
+test("a PR raised by a crew member is marked, whatever the case of the name; others are not", async () => {
+  // Both PRs in the fixture were raised by "ann".
+  const crew = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crewMembers: ["zed", "ANN"] } }).ctx);
+  assert.deepEqual(crew.prs.map((p) => [p.author, p.byCrew]), [["ann", true], ["ann", true]]);
+
+  const others = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crewMembers: ["zed"] } }).ctx);
+  assert.ok(others.prs.every((p) => !("byCrew" in p)));
+});
