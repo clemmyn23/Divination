@@ -3,7 +3,7 @@ import type { Check, Context, Source } from "../../core/types.ts";
 import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
 import { fromInbox } from "./inbox.ts";
-import { conversationsFromConfig } from "./normalise.ts";
+import { appLink, conversationsFromConfig } from "./normalise.ts";
 import { slackPanels, threadDoneKey, threadKey, tsMs } from "./panel.ts";
 import { slackSummary } from "./summary.enricher.ts";
 import type { SlackData } from "./types.ts";
@@ -89,14 +89,14 @@ export const slack: Source<SlackData> = {
   collect: collectSlack,
   fromInbox,
   validate,
-  attention: (data) => {
+  attention: (data, view) => {
     const byId = new Map(data.conversations.map((c) => [c.id, c]));
     return data.threads
       .filter((t) => t.needsYou !== undefined)
       .map((t) => {
         const conversation = byId.get(t.channelId);
         const title = conversation ? (conversation.kind === "dm" ? conversation.name : `#${conversation.name}`) : t.channelId;
-        return { key: threadKey(t), title, reason: t.needsYou!, url: t.url, at: tsMs(t.latestTs), doneKey: threadDoneKey(t) };
+        return { key: threadKey(t), title, reason: t.needsYou!, url: appLink(t.url, view.config.slack.teamId), at: tsMs(t.latestTs), doneKey: threadDoneKey(t) };
       });
   },
   panels: slackPanels,

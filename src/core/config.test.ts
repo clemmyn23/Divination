@@ -49,3 +49,9 @@ test("muted Slack authors default to none and must be a list of names", () => {
   assert.deepEqual(loadConfig(tempRoot()).slack.muteAuthors, []);
   assert.throws(() => loadConfig(tempRoot({ slack: { muteAuthors: "Google Calendar" } })), /slack\.muteAuthors/);
 });
+
+test("the Slack team id defaults to empty and must be a string", () => {
+  assert.equal(loadConfig(tempRoot()).slack.teamId, "");
+  assert.equal(loadConfig(tempRoot({ slack: { teamId: "T02ABC" } })).slack.teamId, "T02ABC");
+  assert.throws(() => loadConfig(tempRoot({ slack: { teamId: 7 } })), /slack\.teamId/);
+});

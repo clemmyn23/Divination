@@ -29,6 +29,7 @@
   "slack": {
     "transport": "api",
     "workspaceUrl": "",
+    "teamId": "",
     "userId": "",
     "windowHours": 72,
     "muteAuthors": [],

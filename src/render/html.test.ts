@@ -28,3 +28,12 @@ test("esc covers the five characters and copes with non-strings", () => {
   assert.equal(esc(null), "");
   assert.equal(esc(42), "42");
 });
+
+test("a Slack app link is allowed, opens in place rather than a new tab, and nothing else gets through that door", () => {
+  const app = "slack://channel?team=T02ABC&id=C1&message=1795563588.591749";
+  assert.equal(safeUrl(app), app);
+  assert.equal(link("thread", app), `<a href="${app.replaceAll("&", "&amp;")}">thread</a>`);
+  for (const bad of ["slack://open", "slack://channel?team=T1&id=C1&x=<script>", "slack://channel?team=T1&id=C1 onclick=x", "slack:channel?team=T1&id=C1", "slackx://channel?team=T1&id=C1", "file:///etc/passwd"]) {
+    assert.equal(safeUrl(bad), undefined, bad);
+  }
+});

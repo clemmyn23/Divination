@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { view } from "../../../test/helpers.ts";
-import { conversationsFromConfig, permalink, plainText, toThread } from "./normalise.ts";
+import { appLink, conversationsFromConfig, permalink, plainText, toThread } from "./normalise.ts";
 import type { SlackConversation, SlackMessage } from "./types.ts";
 
 const CONV: SlackConversation = { id: "C1", name: "team-dev", group: "Team", kind: "channel" };
@@ -71,4 +71,20 @@ test("the app manifest asks for read-only user scopes and no bot", () => {
   assert.equal(manifest.oauth_config.scopes.bot, undefined);
   assert.equal(manifest.features?.bot_user, undefined);
   assert.ok(!/write|chat:|reactions:/.test(JSON.stringify(manifest.oauth_config)));
+});
+
+test("a message link becomes a link that opens the Slack app at that message", () => {
+  assert.equal(appLink("https://w.slack.com/archives/C1/p1795563588591749", "T02ABC"), "slack://channel?team=T02ABC&id=C1&message=1795563588.591749");
+  assert.equal(
+    appLink("https://w.slack.com/archives/D03MS4595SA/p1794544467370979?thread_ts=1794544000.000100&cid=D03MS4595SA", "T02ABC"),
+    "slack://channel?team=T02ABC&id=D03MS4595SA&message=1794544467.370979&thread_ts=1794544000.000100",
+  );
+});
+
+test("without a team id, or for a link that is not a Slack message, the link is left alone", () => {
+  const url = "https://w.slack.com/archives/C1/p1795563588591749";
+  assert.equal(appLink(url, ""), url);
+  assert.equal(appLink("https://git.example.com/o/r/pull/1", "T02ABC"), "https://git.example.com/o/r/pull/1");
+  assert.equal(appLink("https://w.slack.com/archives/C1/p5", "T02ABC"), "https://w.slack.com/archives/C1/p5"); // too short to be a message
+  assert.equal(appLink("https://w.slack.com/archives/C1/p1795563588591749", "T02 ABC"), url); // a team id is letters and digits only
 });

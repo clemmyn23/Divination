@@ -2,6 +2,7 @@ import { startOfDay } from "../../core/time.ts";
 import type { Panel, View } from "../../core/types.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
 import { esc, link } from "../../render/html.ts";
+import { appLink } from "./normalise.ts";
 import type { AlertCount, SlackConversation, SlackData, SlackThread } from "./types.ts";
 
 /** The cache key, attention key and summary key of a thread. */
@@ -30,7 +31,7 @@ function threadItem(thread: SlackThread, conversation: SlackConversation, view: 
   const authors = conversation.kind === "dm" ? [] : [esc(thread.authors.join(", "))];
   const meta = [esc(where(conversation)), ...authors, String(thread.messageCount), ...(thread.needsYou ? [esc(thread.needsYou)] : [])];
   const key = threadDoneKey(thread);
-  return `<li class="item thread${thread.needsYou ? " needs-you" : ""}">${link(title, thread.url)}
+  return `<li class="item thread${thread.needsYou ? " needs-you" : ""}">${link(title, appLink(thread.url, view.config.slack.teamId))}
 <p class="meta">${meta.join(" · ")}</p>${tick(key, isDone(key, view))}</li>`;
 }
 
@@ -70,7 +71,7 @@ ${threads.map((t) => threadItem(t, byId.get(t.channelId)!, view)).join("\n")}
 
 function alertRow(channelId: string, r: AlertCount, view: View): string {
   const key = alertDoneKey(channelId, r);
-  return `<li class="alert state-${r.state}"><span class="times">×${r.count}</span> ${link(r.title, r.url)} <span class="state">${r.state}</span>${tick(key, isDone(key, view))}</li>`;
+  return `<li class="alert state-${r.state}"><span class="times">×${r.count}</span> ${link(r.title, appLink(r.url, view.config.slack.teamId))} <span class="state">${r.state}</span>${tick(key, isDone(key, view))}</li>`;
 }
 
 function alertsPanel(data: SlackData, view: View): string {

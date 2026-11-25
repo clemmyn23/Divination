@@ -10,6 +10,19 @@ export function permalink(workspaceUrl: string, channelId: string, ts: string, t
   return threadTs ? `${base}?thread_ts=${threadTs}&cid=${channelId}` : base;
 }
 
+/**
+ * The same message as a link that opens the Slack app directly, skipping the browser's
+ * "open in Slack?" page. Needs the workspace's team id (`slack.teamId`); without one, or
+ * for anything that is not a message link, the URL is returned unchanged.
+ */
+export function appLink(url: string, teamId: string): string {
+  if (!/^[A-Z0-9]+$/.test(teamId)) return url;
+  const m = /^https:\/\/[^/]+\/archives\/([A-Z0-9]+)\/p(\d+)(\d{6})(?:\?thread_ts=(\d+\.\d+))?/.exec(url);
+  if (!m) return url;
+  const [, channel, seconds, micros, thread] = m;
+  return `slack://channel?team=${teamId}&id=${channel}&message=${seconds}.${micros}${thread ? `&thread_ts=${thread}` : ""}`;
+}
+
 /** Slack's message markup as the text a person would read: mentions, links, channels and entities. */
 export function plainText(text: string, names: Record<string, string>): string {
   return text

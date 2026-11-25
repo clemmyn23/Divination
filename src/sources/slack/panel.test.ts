@@ -171,3 +171,16 @@ test("a done thread needs no summary button, and its needs-you item carries the 
   assert.ok(!slackPanels(long, { ...view, done: { [key]: NOW } }).find((p) => p.id === "slack")!.html.includes("data-enrich"));
   assert.equal(slack.attention(long, view)[0]!.doneKey, key);
 });
+
+test("with a team id set, thread, alert and needs-you links open the Slack app; without one they stay web links", () => {
+  const v = { ...view, config: { ...view.config, slack: { ...view.config.slack, teamId: "T02ABC" } } };
+  const [slackPanel, alertsPanel] = slackPanels(DATA, v);
+  assert.ok(slackPanel!.html.includes('<a href="slack://channel?team=T02ABC&amp;id=C1&amp;message=200.000100">Sam, can you confirm?</a>'));
+  assert.ok(!slackPanel!.html.includes("https://w.slack.com"));
+  // The alert links in this fixture are not real message links, so they stay as they are.
+  assert.ok(alertsPanel!.html.includes('href="https://w.slack.com/archives/C2/p1"'));
+  assert.equal(slack.attention(DATA, v)[0]!.url, "slack://channel?team=T02ABC&id=C1&message=200.000100");
+
+  assert.ok(slackHtml().includes('href="https://w.slack.com/archives/C1/p200000100" target="_blank"'));
+  assert.equal(slack.attention(DATA, view)[0]!.url, "https://w.slack.com/archives/C1/p200000100");
+});

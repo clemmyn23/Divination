@@ -44,6 +44,8 @@ export interface Config {
   slack: {
     transport: Transport;
     workspaceUrl: string;
+    /** The workspace's team id (`T…`). When set, Slack links open the Slack app instead of the browser. */
+    teamId: string;
     userId: string;
     windowHours: number;
     /** Authors (names, or bot ids) whose threads are left out when nobody else wrote in them. */

@@ -79,6 +79,10 @@ function problemsIn(config: Config): string[] {
     problems.push(`github.crewMembers must be a list of GitHub usernames (got ${shown(crew)})`);
   }
 
+  if (typeof config.slack?.teamId !== "string") {
+    problems.push(`slack.teamId must be a string (got ${shown(config.slack?.teamId)})`);
+  }
+
   const muted: unknown = config.slack?.muteAuthors;
   if (!Array.isArray(muted) || !muted.every((name) => typeof name === "string")) {
     problems.push(`slack.muteAuthors must be a list of names (got ${shown(muted)})`);
