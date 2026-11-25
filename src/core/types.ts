@@ -30,6 +30,12 @@ export interface Config {
   /** PRs and other waiting things older than this are folded into "stale tasks". 0 never folds. */
   hideOlderThanDays: number;
   enrich: { maxBudgetUsd: number };
+  /**
+   * Refresh now can have Claude do the reads that are otherwise started by hand, for
+   * sources on the inbox transport. `throttleMinutes` is how soon after a source's last
+   * such read another may start; it limits only these Claude calls, never a plain refresh.
+   */
+  claudeReads: { onRefresh: boolean; throttleMinutes: number; timeoutMinutes: number };
   server: { port: number };
   github: {
     transport: Transport;
@@ -54,8 +60,16 @@ export interface Config {
     dynamic: { postedWithinDays: number; exclude: string[] };
     alerts: { firing: string; resolved: string };
     summary: { model: string; minMessages: number };
+    /** The Claude run that sweeps Slack: its model, and the connector tools it may use (read-only ones). */
+    sweep: { model: string; tools: string[] };
   };
-  calendar: { transport: Transport; dayStart: string; dayEnd: string };
+  calendar: {
+    transport: Transport;
+    dayStart: string;
+    dayEnd: string;
+    /** The Claude run that reads the calendar: its model, and the connector tools it may use (read-only ones). */
+    read: { model: string; tools: string[] };
+  };
 }
 
 /** Every location the tool writes to. All of them live under `<root>/out`. */
@@ -170,6 +184,11 @@ export interface Source<TData> {
    * dropped file must already be the data. Throw to refuse a file in the wrong shape.
    */
   fromInbox?(dropped: unknown, ctx: Context): TData;
+  /**
+   * Have Claude gather what `fromInbox` takes, through a connector. This is an LLM call:
+   * it is only ever made when Refresh now is pressed, and only with `claudeReads.onRefresh`.
+   */
+  feed?(ctx: Context): Promise<unknown>;
   /** Problems with the data; empty means valid. */
   validate(data: unknown): string[];
   attention(data: TData, view: View): AttentionItem[];

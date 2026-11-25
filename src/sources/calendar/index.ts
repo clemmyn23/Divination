@@ -2,7 +2,9 @@ import { HttpError } from "../../core/http.ts";
 import { readDropped } from "../../core/store.ts";
 import { isoDate, startOfDay } from "../../core/time.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
+import { claudeCheck } from "../../enrich/claude.ts";
 import { dayClass, eventsForDay, headline } from "./day.ts";
+import { feed } from "./feed.ts";
 import { parseIcs } from "./ics.ts";
 import { fromInbox } from "./inbox.ts";
 import { calendarPanels } from "./panel.ts";
@@ -72,7 +74,9 @@ function inboxCheck(ctx: Context): Check {
 }
 
 async function doctor(ctx: Context): Promise<Check[]> {
-  if (ctx.config.calendar.transport === "inbox") return [inboxCheck(ctx)];
+  if (ctx.config.calendar.transport === "inbox") {
+    return [inboxCheck(ctx), ...(ctx.config.claudeReads.onRefresh ? [await claudeCheck(ctx)] : [])];
+  }
   if (!(await ctx.secrets.get(SECRET))) {
     return [{ name: "address", ok: false, detail: "no calendar address is stored", fix: SET_IT }];
   }
@@ -89,6 +93,7 @@ async function doctor(ctx: Context): Promise<Check[]> {
 /**
  * Today's meetings: fetched from the calendar's private iCal address, or, with the inbox
  * transport, taken from the file a calendar read dropped (see `prompts/calendar-read.md`).
+ * That read is started by hand with `/calendar-read`, or by Refresh now through `feed`.
  */
 export const calendar: Source<CalendarData> = {
   id: "calendar",
@@ -96,6 +101,7 @@ export const calendar: Source<CalendarData> = {
   doctor,
   collect,
   fromInbox,
+  feed,
   validate,
   attention: () => [],
   panels: calendarPanels,

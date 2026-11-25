@@ -116,7 +116,7 @@
     return sources
       .map((s) => {
         const name = s.title.padEnd(width);
-        if (s.state === "running") return `… ${name}  reading…`;
+        if (s.state === "running") return `… ${name}  ${s.asking ? "Claude is reading…" : "reading…"}`;
         if (s.state === "failed") return `✗ ${name}  failed: ${s.error ?? "unknown error"}`;
         if (!s.at) return `✓ ${name}  never read`;
         if (s.byHand) return `✓ ${name}  read by hand at ${clock(s.at)}`;
@@ -276,8 +276,11 @@
     }
     for (const button of ticks()) button.disabled = false;
 
-    const reading = sources.filter((s) => s.state === "running").map((s) => s.title);
-    if (busy) setStatus(status.job.name.startsWith("enrich") ? "asking Claude…" : `updating…${reading.length > 0 ? ` ${reading.join(", ")}` : ""}`);
+    const running = sources.filter((s) => s.state === "running");
+    const reading = running.length > 0 ? ` ${running.map((s) => s.title).join(", ")}` : "";
+    // Claude is at work for a sparkle button, or for a source it is reading after Refresh now.
+    const asking = busy && (status.job.name.startsWith("enrich") || running.some((s) => s.asking));
+    if (busy) setStatus(asking ? `asking Claude…${reading}` : `updating…${reading}`);
     else if (status.lastJob && !status.lastJob.ok) setStatus(`failed: ${status.lastJob.error}`);
     else if (!status.live) setStatus("paused");
     else setStatus(status.nextTickAt ? `next update ${clock(status.nextTickAt)}` : "live");

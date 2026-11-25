@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { basename } from "node:path";
-import type { Context } from "../core/types.ts";
+import type { Check, Context } from "../core/types.ts";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const TIMED_OUT = 124;
@@ -15,8 +15,15 @@ export interface ClaudeRequest {
   model: string;
   /** JSON Schema the answer must match. */
   schema: object;
+  /** Added after the prompt file's text: what is particular to this run. */
+  note?: string;
   /** Tools the run may use without asking, for example `Bash(gh pr diff:*)`. None by default. */
   allowedTools?: string[];
+  /**
+   * Let the run reach the account's connectors (MCP servers), for a read that goes through
+   * one. Without this no MCP server is loaded at all. It may still use only `allowedTools`.
+   */
+  connectors?: boolean;
   env?: Record<string, string>;
   timeoutMs?: number;
 }
@@ -32,6 +39,8 @@ interface CliOutput {
   structured_output?: unknown;
   total_cost_usd?: number;
   num_turns?: number;
+  /** Tool calls the run tried and was refused. */
+  permission_denials?: { tool_name?: unknown }[];
 }
 
 /** One line of the CLI's `stream-json` output. Only the parts read here are named. */
@@ -120,15 +129,17 @@ function jsonFromText(text: string): unknown {
 /**
  * Ask the Claude CLI one question and return its structured answer.
  *
- * This is the only place the tool starts an LLM, and it is only reached from
- * `enrichOnDemand`. The run loads no MCP servers, keeps no session, is capped by
- * `enrich.maxBudgetUsd`, and may use only the tools named in `allowedTools`. What it
+ * This is the only place the tool starts an LLM. It is reached from `enrichOnDemand` (a
+ * sparkle button or the `enrich` command) and from a source's `feed` (Refresh now, when
+ * `claudeReads.onRefresh` is on). The run keeps no session, is capped by
+ * `enrich.maxBudgetUsd`, may use only the tools named in `allowedTools`, and loads no
+ * MCP servers unless `connectors` is set. What it
  * writes and the tools it uses are reported through `ctx.log` while it runs.
  */
 export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unknown> {
   const args = [
     "-p",
-    readFileSync(req.promptFile, "utf8"),
+    readFileSync(req.promptFile, "utf8") + (req.note ? `\n\n${req.note}` : ""),
     // One JSON event per line while it works, text in pieces as it is written, the result last.
     "--output-format",
     "stream-json",
@@ -138,7 +149,7 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     req.model,
     "--json-schema",
     JSON.stringify(req.schema),
-    "--strict-mcp-config",
+    ...(req.connectors ? [] : ["--strict-mcp-config"]),
     "--no-session-persistence",
     "--max-budget-usd",
     String(ctx.config.enrich.maxBudgetUsd),
@@ -160,7 +171,12 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
   const usage = () => ({
     ...(typeof out?.total_cost_usd === "number" ? { costUsd: out.total_cost_usd } : {}),
     ...(typeof out?.num_turns === "number" ? { turns: out.num_turns } : {}),
+    ...(denied().length > 0 ? { denied: denied() } : {}),
   });
+  /** Each tool the run was refused, once. A name here that the prompt needs means `allowedTools` is wrong. */
+  const denied = () => [
+    ...new Set((Array.isArray(out?.permission_denials) ? out.permission_denials : []).map((d) => d?.tool_name).filter((name): name is string => typeof name === "string")),
+  ];
 
   try {
     const res = await ctx.exec("claude", args, {
@@ -195,4 +211,21 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     ctx.log("llm", { ok: false, ms: elapsed(), model: req.model, ...usage(), error: e instanceof Error ? e.message : String(e) });
     throw e;
   }
+}
+
+/**
+ * For `doctor`: is the Claude CLI there and signed in? This asks the CLI about itself and
+ * calls no model.
+ */
+export async function claudeCheck(ctx: Context): Promise<Check> {
+  const res = await ctx.exec("claude", ["auth", "status"], { timeoutMs: 15_000 });
+  const status = parseJson(res.stdout) as { loggedIn?: unknown } | undefined;
+  if (typeof status?.loggedIn !== "boolean") return { name: "claude", ok: false, detail: "the claude CLI could not be run", fix: "install Claude Code, then run claude in a terminal" };
+  if (status.loggedIn) return { name: "claude", ok: true, detail: "the claude CLI is signed in" };
+  return {
+    name: "claude",
+    ok: false,
+    detail: "the claude CLI is not signed in, so Refresh now cannot ask it to read this",
+    fix: "run claude in a terminal, then /login",
+  };
 }

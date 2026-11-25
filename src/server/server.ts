@@ -8,6 +8,7 @@ import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
 import { pageHtml, renderSite } from "../render/site.ts";
 import { type ActivityUpdate, createActivity } from "./activity.ts";
+import { createFeeder } from "./feed.ts";
 import { createJobs } from "./jobs.ts";
 import { type Timers, createLive } from "./live.ts";
 
@@ -72,7 +73,7 @@ const ROUTES: Record<string, "GET" | "POST"> = {
  * The local page server, as a function from request to response.
  *
  * It serves the page, owns the live-update timer, and is the only way a button press
- * reaches `enrichOnDemand`. It answers only requests addressed to its own loopback
+ * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now through `feed`. It answers only requests addressed to its own loopback
  * address, and only acts on a POST that carries the token it put in the page.
  */
 export function createApp(base: Context, sources: Source<any>[], token: string, timers?: Timers) {
@@ -100,6 +101,7 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
   };
 
   const jobs = createJobs(ctx.now);
+  const feed = createFeeder();
   const startedAt = ctx.now(); // changes on every restart, which tells an open page to reload
   const port = ctx.config.server.port;
   const ownHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
@@ -193,8 +195,14 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
         return json(200, status());
       }
 
+      // Refresh now: the plain refresh first, then (only here, never on the timer, and only
+      // with `claudeReads.onRefresh`) Claude reads the sources that are otherwise fed by hand.
       case "/api/tick": {
-        const started = jobs.run("tick", () => tick(ctx, sources, { force: true }));
+        const started = jobs.run("tick", async () => {
+          await tick(ctx, sources, { force: true });
+          const failures = await feed(ctx, sources);
+          if (failures.length > 0) throw new Error(failures.join("; "));
+        });
         return started ? json(202, status()) : refuse(409, "busy");
       }
 

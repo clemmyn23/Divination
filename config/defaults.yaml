@@ -27,6 +27,16 @@ hideOlderThanDays: 45
 enrich:
   maxBudgetUsd: 0.5
 
+# Refresh now can have Claude do the reads you otherwise start by hand (/calendar-read,
+# /slack-sweep), for sources whose transport is inbox. The timer never does this.
+claudeReads:
+  onRefresh: false
+  # After Claude reads a source, pressing Refresh now again within this many minutes
+  # refreshes as usual but does not ask Claude again. 0 switches the limit off.
+  throttleMinutes: 2
+  # How long one read may run before it is stopped.
+  timeoutMinutes: 10
+
 server:
   port: 4815
 
@@ -72,8 +82,22 @@ slack:
   summary:
     model: haiku
     minMessages: 3
+  # The Claude run behind /slack-sweep when Refresh now starts it. `tools` are the only
+  # tools it gets: keep them to the Slack connector's read-only ones.
+  sweep:
+    model: haiku
+    tools:
+      - mcp__claude_ai_Slack__slack_read_channel
+      - mcp__claude_ai_Slack__slack_read_thread
 
 calendar:
   transport: ics
   dayStart: "08:00"
   dayEnd: "18:00"
+  # The Claude run behind /calendar-read when Refresh now starts it. `tools` are the only
+  # tools it gets: keep them to the calendar connector's read-only ones.
+  read:
+    model: haiku
+    tools:
+      - mcp__claude_ai_Google_Calendar__list_calendars
+      - mcp__claude_ai_Google_Calendar__list_events

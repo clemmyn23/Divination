@@ -53,7 +53,9 @@ All are run as `node bin/divination.ts <command>`.
 
 - **Start / Pause** turns live updates on or off. While live, the page collects and redraws
   every 15 minutes during working hours (`tick` in config). The choice survives a restart.
-- **Refresh now** collects and redraws straight away.
+- **Refresh now** collects and redraws straight away. If you turn on
+  `claudeReads.onRefresh`, it then has Claude read the calendar and sweep Slack (see
+  below), redrawing as each one lands.
 - **The status** beside those buttons says when the next update is. Hover it for each
   source's state; click it for the activity log. The log is live while it is open: each
   step of a refresh appears as it happens, and during a Claude call so do the words Claude
@@ -72,7 +74,15 @@ Collecting and drawing never call an LLM. Claude is called only when you ask:
 - a button with a sparkle on the page (**Draft review**, **Summarise threads**), or the
   `enrich` command typed by hand;
 - `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session (see
-  below).
+  below);
+- **Refresh now**, but only with `claudeReads.onRefresh: true`, and only for sources whose
+  `transport` is `inbox`. After its usual refresh it runs the same two reads headless, on
+  Haiku, with nothing but the connector's read-only tools. The timer never does this.
+
+Refresh now's Claude reads are throttled: once Claude has read a source (or failed to),
+pressing again within `claudeReads.throttleMinutes` (2 by default) refreshes as usual but
+does not ask Claude again, and the log says how long is left. The throttle only ever holds
+back those Claude calls.
 
 Each sparkle call runs the `claude` command-line tool headless, with a spending cap
 (`enrich.maxBudgetUsd`), no session kept, and only the tools its prompt needs. Results
@@ -107,7 +117,8 @@ Two ways:
 - **By hand** (`"transport": "inbox"`): run `/slack-sweep` in a Claude session opened on
   this folder. It reads the conversations in `slack.groups` through the Slack connector,
   on Haiku, and writes plain facts to `out/inbox/slack.json`. The tool's own code then
-  decides what needs you. It is only as fresh as your last sweep.
+  decides what needs you. It is only as fresh as your last sweep. With
+  `claudeReads.onRefresh` on, Refresh now runs the sweep for you (a few minutes).
 
 Set `slack.teamId` to make Slack links open the Slack app instead of the browser.
 
@@ -119,7 +130,13 @@ Two ways:
   store it with `secret set calendar_ics`. Some workspaces switch this address off.
 - **By hand** (`"transport": "inbox"`): run `/calendar-read` in a Claude session opened on
   this folder. It reads today's events through the Google Calendar connector, on Haiku,
-  and writes them to `out/inbox/calendar.json`.
+  and writes them to `out/inbox/calendar.json`. With `claudeReads.onRefresh` on, Refresh
+  now runs the read for you.
+
+For Refresh now to run either read, the `claude` command-line tool must be signed in
+(`claude`, then `/login`) and able to reach the connector. `doctor` checks the sign-in.
+The tools each read may use are listed under `slack.sweep.tools` and
+`calendar.read.tools`; keep them to read-only ones.
 
 ## Config
 
@@ -130,7 +147,7 @@ Two ways:
 They are YAML, so comments are welcome. Settings merge key by key; a list in your file
 replaces the whole default list.
 
-Settings you are most likely to change: `me`, `sources`, `tick`, `github.host`,
+Settings you are most likely to change: `me`, `sources`, `tick`, `claudeReads`, `github.host`,
 `github.rotationTeam`, `github.crewMembers`, `github.rank.riskPaths`, `slack.groups`,
 `slack.muteAuthors`, `hideOlderThanDays`.
 

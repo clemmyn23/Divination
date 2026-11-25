@@ -1,7 +1,9 @@
 import { readDropped } from "../../core/store.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
+import { claudeCheck } from "../../enrich/claude.ts";
 import { createSlack } from "./client.ts";
 import { collectSlack } from "./collect.ts";
+import { feed } from "./feed.ts";
 import { fromInbox } from "./inbox.ts";
 import { appLink, conversationsFromConfig } from "./normalise.ts";
 import { slackPanels, threadDoneKey, threadKey, tsMs } from "./panel.ts";
@@ -38,7 +40,9 @@ function inboxCheck(ctx: Context): Check {
 }
 
 async function doctor(ctx: Context): Promise<Check[]> {
-  if (ctx.config.slack.transport === "inbox") return [inboxCheck(ctx)];
+  if (ctx.config.slack.transport === "inbox") {
+    return [inboxCheck(ctx), ...(ctx.config.claudeReads.onRefresh ? [await claudeCheck(ctx)] : [])];
+  }
   if (!(await ctx.secrets.get("slack"))) {
     return [{ name: "token", ok: false, detail: "no Slack token is stored", fix: SET_IT }];
   }
@@ -81,6 +85,7 @@ async function doctor(ctx: Context): Promise<Check[]> {
 /**
  * Slack: the channels and direct messages named in `slack.groups`, read through the Web
  * API or, with the inbox transport, from the file a sweep dropped (`prompts/slack-sweep.md`).
+ * A sweep is started by hand with `/slack-sweep`, or by Refresh now through `feed`.
  */
 export const slack: Source<SlackData> = {
   id: "slack",
@@ -88,6 +93,7 @@ export const slack: Source<SlackData> = {
   doctor,
   collect: collectSlack,
   fromInbox,
+  feed,
   validate,
   attention: (data, view) => {
     const byId = new Map(data.conversations.map((c) => [c.id, c]));

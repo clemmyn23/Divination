@@ -104,3 +104,24 @@ test("the example config in the repo loads over the defaults", () => {
   assert.deepEqual(config.sources, ["calendar", "github", "slack"]);
   assert.equal(config.slack.groups.length, 2);
 });
+
+test("asking Claude on Refresh now is off by default, throttled to two minutes, and its settings are checked", () => {
+  const cfg = loadConfig(tempRoot());
+  assert.deepEqual(cfg.claudeReads, { onRefresh: false, throttleMinutes: 2, timeoutMinutes: 10 });
+  assert.equal(loadConfig(tempRoot({ claudeReads: { onRefresh: true, throttleMinutes: 0 } })).claudeReads.throttleMinutes, 0);
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { onRefresh: "yes" } })), /claudeReads\.onRefresh/);
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { throttleMinutes: -1 } })), /claudeReads\.throttleMinutes/);
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { timeoutMinutes: 0 } })), /claudeReads\.timeoutMinutes/);
+});
+
+test("the tools a Claude read may use default to read-only connector tools and must be a list", () => {
+  const cfg = loadConfig(tempRoot());
+  assert.equal(cfg.calendar.read.model, "haiku");
+  assert.equal(cfg.slack.sweep.model, "haiku");
+  for (const tool of [...cfg.calendar.read.tools, ...cfg.slack.sweep.tools]) {
+    assert.match(tool, /^mcp__claude_ai_(Slack|Google_Calendar)__[a-z_]+$/);
+    assert.doesNotMatch(tool, /send|create|update|delete|respond|schedule|reaction|draft|canvas/);
+  }
+  assert.throws(() => loadConfig(tempRoot({ slack: { sweep: { tools: "all" } } })), /slack\.sweep\.tools/);
+  assert.throws(() => loadConfig(tempRoot({ calendar: { read: { tools: [7] } } })), /calendar\.read\.tools/);
+});

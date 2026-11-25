@@ -19,6 +19,7 @@ export interface Source<TData> {
   doctor(ctx: Context): Promise<Check[]>;              // can it be reached, and how to fix it if not
   collect(ctx: Context): Promise<TData>;               // fetch the data; throw on failure
   fromInbox?(dropped: unknown, ctx: Context): TData;   // turn a hand-dropped file into the data
+  feed?(ctx: Context): Promise<unknown>;               // optional: have Claude gather what fromInbox takes
   validate(data: unknown): string[];                   // problems with the data; empty means valid
   attention(data: TData, view: View): AttentionItem[]; // what is waiting on me
   panels(data: TData, view: View): Panel[];            // the panels to draw
@@ -126,8 +127,21 @@ can be fed by hand. With `"transport": "inbox"` in its config block, the tool re
 
 The file is written by a Claude session the user starts: a command under
 `.claude/commands/` (pinned to a cheap model with `model: haiku`) that follows a prompt
-under `prompts/`. Nothing in the tool starts such a run. Give `doctor` an inbox check
-that says which command to run.
+under `prompts/`. Give `doctor` an inbox check that says which command to run.
+
+A source can also offer `feed`: the same read, run headless when Refresh now is pressed
+(and only then, and only with `claudeReads.onRefresh`). See `src/sources/calendar/feed.ts`:
+
+- It calls `runClaude` with the same prompt file plus a short `note` saying how this run
+  differs: its input is given to it, and its answer is the result rather than a file.
+- It sets `connectors: true` and passes only the connector's read-only tools, taken from
+  config. The run gets no file or shell tools, so text it reads cannot make it write.
+- It returns what `fromInbox` takes, and throws when the service could not be read. An
+  empty answer must never stand in for a failed read.
+
+The server checks the answer with `fromInbox`, writes it to the inbox, collects and
+redraws. It also throttles these reads (`claudeReads.throttleMinutes`); a source does
+nothing to get that.
 
 ## Enrichers
 

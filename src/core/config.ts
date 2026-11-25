@@ -72,6 +72,25 @@ function problemsIn(config: Config): string[] {
     problems.push(`inboxStaleAfterMinutes must be a number of minutes above 0 (got ${shown(inboxStale)})`);
   }
 
+  const reads: Partial<Config["claudeReads"]> = config.claudeReads ?? {};
+  if (typeof reads.onRefresh !== "boolean") {
+    problems.push(`claudeReads.onRefresh must be true or false (got ${shown(reads.onRefresh)})`);
+  }
+  const throttle: unknown = reads.throttleMinutes;
+  if (typeof throttle !== "number" || !Number.isFinite(throttle) || throttle < 0) {
+    problems.push(`claudeReads.throttleMinutes must be a number of minutes, 0 or more (got ${shown(throttle)})`);
+  }
+  const timeout: unknown = reads.timeoutMinutes;
+  if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
+    problems.push(`claudeReads.timeoutMinutes must be a number of minutes above 0 (got ${shown(timeout)})`);
+  }
+  for (const [name, run] of [["slack.sweep", config.slack?.sweep], ["calendar.read", config.calendar?.read]] as const) {
+    const tools: unknown = run?.tools;
+    if (!Array.isArray(tools) || !tools.every((tool) => typeof tool === "string")) {
+      problems.push(`${name}.tools must be a list of tool names (got ${shown(tools)})`);
+    }
+  }
+
   for (const id of ["github", "slack", "calendar"] as const) {
     const transport = config[id]?.transport;
     if (!TRANSPORTS.includes(transport)) {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { NOW, contextWith, fakeHttp, view } from "../../../test/helpers.ts";
+import { NOW, contextWith, fakeExec, fakeHttp, view } from "../../../test/helpers.ts";
 import { HttpError } from "../../core/http.ts";
 import { collectSource } from "../../core/pipeline.ts";
 import type { Secrets } from "../../core/types.ts";
@@ -184,4 +184,14 @@ test("events from another day are labelled as such", () => {
   assert.ok(!today!.html.includes("not been read"));
   const [stale] = calendar.panels(data({ date: "2026-11-24" }), { ...view, now: NOW });
   assert.ok(stale!.html.includes('<p class="quiet">These are for 2026-11-24; today has not been read yet.</p>'));
+});
+
+test("fed by hand, doctor also checks the Claude CLI when Refresh now is set to use it, and only then", async () => {
+  const exec = fakeExec({ "claude auth status": { stdout: '{"loggedIn": false}', code: 1 } });
+  const off = await calendar.doctor(contextWith({ calendar: { transport: "inbox" } }, { exec }));
+  assert.deepEqual(off.map((c) => c.name), ["inbox file"]);
+  assert.equal(exec.calls.length, 0);
+
+  const on = await calendar.doctor(contextWith({ calendar: { transport: "inbox" }, claudeReads: { onRefresh: true } }, { exec }));
+  assert.deepEqual(on.map((c) => [c.name, c.ok]), [["inbox file", false], ["claude", false]]);
 });

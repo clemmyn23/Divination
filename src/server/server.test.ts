@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { beforeEach, test } from "node:test";
-import { contextWith, fakeExec, fakeTimers, settle, sourceWith } from "../../test/helpers.ts";
+import { contextWith, fakeExec, fakeSource, fakeTimers, settle, sourceWith } from "../../test/helpers.ts";
 import type { Context, EnrichItem, Enricher } from "../core/types.ts";
 import { readDone } from "../core/done.ts";
 import { createApp } from "./server.ts";
@@ -317,4 +317,53 @@ test("text Claude is still writing reaches the stream piece by piece", async () 
 test("the activity stream needs the right host, and is read, not posted to", async () => {
   assert.equal((await app.handle(req("GET", "/api/activity/stream", { headers: { host: "evil.example" } }))).status, 403);
   assert.equal((await app.handle(req("POST", "/api/activity/stream"))).status, 405);
+});
+
+// Refresh now can ask Claude to do the hand-fed reads
+
+function feeding(local: object, feed: () => Promise<unknown>) {
+  const c = contextWith({ sources: ["fake"], fake: { transport: "inbox" }, ...local }, { exec });
+  let asked = 0;
+  const source = fakeSource({
+    feed: () => {
+      asked++;
+      return feed();
+    },
+    fromInbox: (dropped) => dropped,
+  });
+  return { app: createApp(c, [source], "tok", timers), asked: () => asked };
+}
+
+test("Refresh now asks Claude for a hand-fed source after its plain refresh; the timer never does", async () => {
+  const f = feeding({ claudeReads: { onRefresh: true, throttleMinutes: 0 } }, async () => ({ n: 1 }));
+  assert.equal((await f.app.handle(req("POST", "/api/tick"))).status, 202);
+  await settle();
+  assert.equal(f.asked(), 1);
+  const log = JSON.parse((await f.app.handle(req("GET", "/api/activity"))).body).lines.map((l: { text: string }) => l.text);
+  assert.ok(log.findIndex((t: string) => /^Refresh finished/.test(t)) < log.indexOf("Fake: asking Claude to read it…"));
+  assert.equal(JSON.parse((await f.app.handle(req("GET", "/api/status"))).body).lastJob.ok, true);
+
+  await f.app.handle(req("POST", "/api/live", { body: '{"on":true}' }));
+  timers.fire();
+  await settle();
+  assert.equal(f.asked(), 1); // with no throttle at all, so this is the timer's own rule
+});
+
+test("with the setting off, Refresh now never asks Claude", async () => {
+  const f = feeding({}, async () => ({ n: 1 }));
+  await f.app.handle(req("POST", "/api/tick"));
+  await settle();
+  assert.equal(f.asked(), 0);
+});
+
+test("a Claude read that fails is what the refresh reports, though the plain refresh went through", async () => {
+  const f = feeding({ claudeReads: { onRefresh: true } }, async () => {
+    throw new Error("claude failed: Failed to authenticate");
+  });
+  await f.app.handle(req("POST", "/api/tick"));
+  await settle();
+  const status = JSON.parse((await f.app.handle(req("GET", "/api/status"))).body);
+  assert.deepEqual([status.lastJob.ok, status.lastJob.error], [false, "Fake: claude failed: Failed to authenticate"]);
+  assert.equal(status.sources[0].state, "failed");
+  assert.equal(status.sources[0].error, "claude failed: Failed to authenticate");
 });

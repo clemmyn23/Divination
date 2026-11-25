@@ -58,7 +58,7 @@ interface Status {
   nextTickAt: number | null;
   renderedAt: number;
   startedAt: number;
-  sources?: { id: string; title: string; state: string; at: number; ms?: number; error?: string; byHand?: boolean }[];
+  sources?: { id: string; title: string; state: string; at: number; ms?: number; error?: string; byHand?: boolean; asking?: boolean }[];
   job: { name: string; startedAt: number } | null;
   lastJob: { name: string; ok: boolean; error?: string; finishedAt: number } | null;
 }
@@ -644,4 +644,15 @@ test("an open log does not make the page ask the server for anything more often"
   const before = p.server.requests.length;
   for (const { fn, ms } of p.intervals) if (ms === 1000) await fn();
   assert.equal(p.server.requests.length, before);
+});
+
+test("while Claude is reading a source, the status and the breakdown say it is Claude", async () => {
+  const sources = [
+    { id: "github", title: "Review queue", state: "ok", at: at("2026-11-25T05:00:00Z"), ms: 900 },
+    { id: "slack", title: "Slack", state: "running", at: at("2026-11-25T04:00:00Z"), byHand: true, asking: true },
+  ];
+  const p = page(null, { status: { ...LIVE, job: { name: "tick", startedAt: 1 }, sources } });
+  await p.finishParsing();
+  assert.equal(p.liveStatus.textContent, "asking Claude… Slack");
+  assert.match(p.pop.textContent.split("\n")[1]!, /^… Slack +Claude is reading…$/);
 });

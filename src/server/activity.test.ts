@@ -189,3 +189,41 @@ test("a page catching up is also given the line still being written, which may h
   a.record("llm-tool", { name: "Bash", detail: "ls" });
   assert.deepEqual(a.linesAfter(growing).map((l) => l.text), ["Claude is using Bash: ls"]);
 });
+
+// Claude reads started by Refresh now
+
+test("a Claude read shows on its source while it runs, and reads as a story in the log", () => {
+  const { a } = activity([{ id: "slack", title: "Slack", state: "ok", at: T0 - 60_000, byHand: true }]);
+  a.record("feed-start", { source: "slack" });
+  assert.deepEqual(a.sources()[0], { id: "slack", title: "Slack", state: "running", at: T0 - 60_000, byHand: true, startedAt: T0, asking: true });
+
+  a.record("feed", { source: "slack", ok: true, ms: 324_000 });
+  a.record("collect-start", { source: "slack" });
+  a.record("collect", { source: "slack", ok: true, ms: 3, at: T0 });
+  assert.deepEqual(a.sources()[0], { id: "slack", title: "Slack", state: "ok", at: T0, byHand: true, ms: 3 });
+  assert.deepEqual(a.lines().map((l) => l.text).slice(0, 2), ["Slack: asking Claude to read it…", "Slack: Claude read it in 324 s"]);
+});
+
+test("a Claude read that fails leaves its source marked failed, with why", () => {
+  const { a } = activity([{ id: "slack", title: "Slack", state: "ok", at: T0 - 60_000, byHand: true }]);
+  a.record("feed-start", { source: "slack" });
+  a.record("feed", { source: "slack", ok: false, ms: 115, error: "claude failed: Failed to authenticate" });
+  assert.deepEqual(a.sources()[0], { id: "slack", title: "Slack", state: "failed", at: T0 - 60_000, byHand: true, ms: 115, error: "claude failed: Failed to authenticate" });
+  assert.deepEqual(
+    a.lines().map((l) => [l.level, l.text]).at(-1),
+    ["error", "Slack: Claude could not read it (0.1 s): claude failed: Failed to authenticate"],
+  );
+});
+
+test("a read held back by the throttle says so, and how long is left", () => {
+  const { a } = activity([{ id: "slack", title: "Slack", state: "ok", at: T0, byHand: true }]);
+  a.record("feed-skip", { source: "slack", waitMs: 90_000, throttleMinutes: 2 });
+  assert.equal(a.lines()[0]!.text, "Slack: Claude was asked less than 2 minutes ago, so it was not asked again (90 s to go)");
+  assert.equal(a.sources()[0]!.state, "ok");
+});
+
+test("tools a Claude run was refused are named on its closing line", () => {
+  const { a } = activity();
+  a.record("llm", { ok: true, ms: 1000, model: "haiku", turns: 2, denied: ["Bash", "mcp__x__send"] });
+  assert.equal(a.lines()[0]!.text, "Claude (haiku) finished in 1 s · 2 turns · refused: Bash, mcp__x__send");
+});

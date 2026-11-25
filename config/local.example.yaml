@@ -7,6 +7,12 @@ me:
 
 sources: [calendar, github, slack]
 
+# Let Refresh now run the calendar read and the Slack sweep through Claude (on Haiku).
+# Pressing again within throttleMinutes refreshes as usual without asking Claude again.
+claudeReads:
+  onRefresh: true
+  throttleMinutes: 2
+
 github:
   host: github.example.com
   rotationTeam: frontend-crew

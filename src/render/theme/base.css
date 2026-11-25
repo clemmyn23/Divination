@@ -112,6 +112,11 @@ h1 {
   font-weight: 500;
   color: var(--ink-soft);
   background: transparent;
+  /* One line, however long the message: the hover breakdown and the log have the rest. */
+  max-width: 44ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 #live-status:hover:not(:disabled) {

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { contextWith, fakeExec, tempRoot } from "../../test/helpers.ts";
-import { runClaude } from "./claude.ts";
+import { claudeCheck, runClaude } from "./claude.ts";
 
 const fixture = (name: string) => readFileSync(fileURLToPath(new URL(`../../test/fixtures/enrich/${name}`, import.meta.url)), "utf8");
 
@@ -178,4 +178,49 @@ test("a logged-out stream fails in the CLI's own words, and the error is not sho
   await assert.rejects(runClaude(ctx, req), /Failed to authenticate/);
   assert.deepEqual(during(), []);
   assert.equal(logged.find(([event]) => event === "llm")![1].turns, 1);
+});
+
+// Connector runs: the reads Refresh now can start
+
+test("a run that may use connectors does not shut out MCP servers, and still gets no built-in tools", async () => {
+  const exec = fakeExec({ "claude -p": { stdout: events(RESULT) } });
+  const tools = ["mcp__claude_ai_Slack__slack_read_channel", "mcp__claude_ai_Slack__slack_read_thread"];
+  await runClaude(contextWith({}, { exec }), { ...req, connectors: true, allowedTools: tools });
+  const args = exec.calls[0]!;
+  assert.ok(!args.includes("--strict-mcp-config"));
+  assert.equal(args[args.indexOf("--tools") + 1], "");
+  assert.deepEqual(args.slice(-3), ["--allowedTools", ...tools]);
+
+  const plain = fakeExec({ "claude -p": { stdout: events(RESULT) } });
+  await runClaude(contextWith({}, { exec: plain }), req);
+  assert.ok(plain.calls[0]!.includes("--strict-mcp-config"));
+});
+
+test("a note for this run is added after the prompt file's text", async () => {
+  const exec = fakeExec({ "claude -p": { stdout: events(RESULT) } });
+  await runClaude(contextWith({}, { exec }), { ...req, note: "## This run\n\nAnswer with JSON." });
+  assert.equal(exec.calls[0]![2], "Return the number doubled.\n\n## This run\n\nAnswer with JSON.");
+});
+
+test("tools the run was refused are named in the log, so a wrong tool name in config can be found", async () => {
+  const stdout = events({ ...RESULT, permission_denials: [{ tool_name: "mcp__claude_ai_Slack__slack_send_message" }, { tool_name: "Bash" }, { tool_name: "Bash" }] });
+  const { ctx, logged } = watched({ stdout });
+  await runClaude(ctx, req);
+  assert.deepEqual(logged.find(([event]) => event === "llm")![1].denied, ["mcp__claude_ai_Slack__slack_send_message", "Bash"]);
+});
+
+// Doctor: can Refresh now's Claude reads run at all
+
+test("the doctor's Claude check says whether the CLI is signed in, and how to fix it", async () => {
+  const check = (entry: Parameters<typeof fakeExec>[0][string]) => claudeCheck(contextWith({}, { exec: fakeExec({ "claude auth status": entry }) }));
+
+  assert.deepEqual(await check({ stdout: '{"loggedIn": true, "authMethod": "claude.ai"}' }), { name: "claude", ok: true, detail: "the claude CLI is signed in" });
+  assert.deepEqual(await check({ stdout: '{"loggedIn": false, "authMethod": "none"}', code: 1 }), {
+    name: "claude",
+    ok: false,
+    detail: "the claude CLI is not signed in, so Refresh now cannot ask it to read this",
+    fix: "run claude in a terminal, then /login",
+  });
+  const missing = await check({ code: 127 });
+  assert.deepEqual([missing.ok, missing.detail], [false, "the claude CLI could not be run"]);
 });

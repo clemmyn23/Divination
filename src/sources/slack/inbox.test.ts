@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { test } from "node:test";
-import { NOW, contextWith, view } from "../../../test/helpers.ts";
+import { NOW, contextWith, fakeExec, view } from "../../../test/helpers.ts";
 import { SLACK_LOCAL } from "../../../test/fixtures/slack/api.ts";
 import { collectSource } from "../../core/pipeline.ts";
 import { writeJson } from "../../core/store.ts";
@@ -207,4 +207,14 @@ test("doctor names a swept file that is not valid JSON, and leaves it for me to 
   assert.equal(check!.ok, false);
   assert.match(check!.detail, /not valid JSON/);
   assert.equal(readFileSync(path, "utf8"), '{"conversations": [,]}');
+});
+
+test("fed by hand, doctor also checks the Claude CLI when Refresh now is set to use it, and only then", async () => {
+  const exec = fakeExec({ "claude auth status": { stdout: '{"loggedIn": true}' } });
+  const off = await slack.doctor(contextWith({ slack: { transport: "inbox" } }, { exec }));
+  assert.deepEqual(off.map((c) => c.name), ["inbox file"]);
+  assert.equal(exec.calls.length, 0);
+
+  const on = await slack.doctor(contextWith({ slack: { transport: "inbox" }, claudeReads: { onRefresh: true } }, { exec }));
+  assert.deepEqual(on.map((c) => [c.name, c.ok]), [["inbox file", false], ["claude", true]]);
 });

@@ -17,6 +17,8 @@ export interface SourceState {
   byHand?: boolean;
   /** When the read in progress began. */
   startedAt?: number;
+  /** The read in progress is Claude's, started by Refresh now. */
+  asking?: boolean;
 }
 
 export interface ActivityLine {
@@ -90,7 +92,7 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           const id = String(f.source);
           const state = states.get(id);
           if (state) {
-            const { ms: _ms, error: _error, ...kept } = state;
+            const { ms: _ms, error: _error, asking: _asking, ...kept } = state;
             states.set(id, { ...kept, state: "running", startedAt: now() });
           }
           say(`${titleOf(id)}: reading…`);
@@ -103,7 +105,7 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           const error = typeof f.error === "string" ? f.error : undefined;
           const state = states.get(id);
           if (state) {
-            const { startedAt: _startedAt, ms: _ms, error: _error, ...kept } = state;
+            const { startedAt: _startedAt, ms: _ms, error: _error, asking: _asking, ...kept } = state;
             states.set(id, {
               ...kept,
               state: ok ? "ok" : "failed",
@@ -116,6 +118,40 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           else say(`${titleOf(id)}: failed in ${seconds(f.ms)}: ${error ?? "unknown error"}`, "error");
           break;
         }
+
+        // Claude reading a source that is otherwise fed by hand, after Refresh now.
+        case "feed-start": {
+          const id = String(f.source);
+          const state = states.get(id);
+          if (state) {
+            const { ms: _ms, error: _error, ...kept } = state;
+            states.set(id, { ...kept, state: "running", startedAt: now(), asking: true });
+          }
+          say(`${titleOf(id)}: asking Claude to read it…`);
+          break;
+        }
+
+        case "feed": {
+          const id = String(f.source);
+          if (f.ok === true) {
+            say(`${titleOf(id)}: Claude read it in ${seconds(f.ms)}`); // collecting it comes next and settles its state
+            break;
+          }
+          const error = typeof f.error === "string" ? f.error : "unknown error";
+          const state = states.get(id);
+          if (state) {
+            const { startedAt: _startedAt, asking: _asking, ...kept } = state;
+            states.set(id, { ...kept, state: "failed", ms: Number(f.ms ?? 0), error });
+          }
+          say(`${titleOf(id)}: Claude could not read it (${seconds(f.ms)}): ${error}`, "error");
+          break;
+        }
+
+        case "feed-skip":
+          say(
+            `${titleOf(String(f.source))}: Claude was asked less than ${plural(Number(f.throttleMinutes ?? 0), "minute")} ago, so it was not asked again (${seconds(f.waitMs)} to go)`,
+          );
+          break;
 
         case "enrich":
           say(`Asked for ${String(f.enricher)} on ${String(f.key)} (${plural(Number(f.items ?? 0), "item")})`);
@@ -156,6 +192,7 @@ export function createActivity(now: () => number, initial: SourceState[]) {
             `Claude (${String(f.model)}) ${ok ? "finished" : "failed"} in ${seconds(f.ms)}`,
             ...(typeof f.costUsd === "number" ? [`$${f.costUsd.toFixed(2)}`] : []),
             ...(typeof f.turns === "number" ? [plural(f.turns, "turn")] : []),
+            ...(Array.isArray(f.denied) && f.denied.length > 0 ? [`refused: ${f.denied.join(", ")}`] : []),
           ];
           const detail = ok ? f.output : f.error;
           say(parts.join(" · ") + (typeof detail === "string" && detail !== "" ? `\n${indent(detail)}` : ""), ok ? "info" : "error");
