@@ -7,7 +7,10 @@ import { collectCommand } from "./commands/collect.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { enrichCommand } from "./commands/enrich.ts";
 import { renderCommand } from "./commands/render.ts";
+import { scheduleCommand } from "./commands/schedule.ts";
 import { secretCommand } from "./commands/secret.ts";
+import { serveCommand } from "./commands/serve.ts";
+import { tickCommand } from "./commands/tick.ts";
 
 export interface Command {
   summary: string;
@@ -21,10 +24,13 @@ let context: Context | undefined;
 const getCtx = () => (context ??= createContext(root));
 
 export const commands: Record<string, Command> = {
+  serve: serveCommand(getCtx, sources),
   doctor: doctorCommand(getCtx, sources),
   collect: collectCommand(getCtx, sources),
   render: renderCommand(getCtx, sources),
+  tick: tickCommand(getCtx, sources),
   enrich: enrichCommand(getCtx, sources),
+  schedule: scheduleCommand(getCtx),
   secret: secretCommand(),
 };
 

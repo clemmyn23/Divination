@@ -52,6 +52,35 @@ export function fakeSource(over: Partial<Source<any>> = {}): Source<any> {
   };
 }
 
+/** Let promises that are already on their way finish. */
+export async function settle(): Promise<void> {
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
+}
+
+/** Stand-ins for setInterval and clearInterval that record what was asked and fire on demand. */
+export function fakeTimers() {
+  const callbacks = new Map<number, () => void>();
+  let nextId = 1;
+  const timers = {
+    intervals: [] as number[],
+    cleared: 0,
+    setInterval: ((fn: () => void, ms: number) => {
+      timers.intervals.push(ms);
+      const id = nextId++;
+      callbacks.set(id, fn);
+      return id;
+    }) as unknown as typeof setInterval,
+    clearInterval: ((id: number) => {
+      if (callbacks.delete(id)) timers.cleared++;
+    }) as unknown as typeof clearInterval,
+    /** Run every interval that is still scheduled, once. */
+    fire() {
+      for (const fn of [...callbacks.values()]) fn();
+    },
+  };
+  return timers;
+}
+
 /** A `fake` source that carries the enricher and already has collected data on disk. */
 export function sourceWith(ctx: Context, enricher: Enricher<any>, data: unknown = {}): Source<any> {
   const source = fakeSource({ enrichers: [enricher] });
