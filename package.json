@@ -11,9 +11,10 @@
     "divination": "bin/divination.ts"
   },
   "scripts": {
+    "start": "node bin/divination.ts",
+    "divination": "node bin/divination.ts",
     "test": "node --test \"src/**/*.test.ts\"",
-    "typecheck": "tsc --noEmit",
-    "divination": "node bin/divination.ts"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
