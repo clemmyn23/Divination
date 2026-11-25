@@ -238,9 +238,23 @@ test("theme defines tokens, dark mode and the phone breakpoint", () => {
 });
 
 test("no external resources", () => {
-  assert.deepEqual(renderPage({ view, entries: [] }).match(/(?:src|<link[^>]+href)="[^"]+"/g), null);
+  const refs = [...renderPage({ view, entries: [] }).matchAll(/(?:src|<link[^>]+href)="([^"]+)"/g)].map((m) => m[1]!);
+  // The favicon is carried inside the page as a data address; nothing is fetched.
+  assert.deepEqual(
+    refs.filter((ref) => !ref.startsWith("data:")),
+    [],
+  );
 });
 
 function panel() {
   return { id: "p", title: "P", tint: "mint" as const, html: "" };
 }
+
+test("the page carries its own favicon, with a badge when something needs you", () => {
+  const calm = renderPage({ view, entries: [{ source: fakeSource(), envelope: ok({}) }] });
+  assert.match(calm, /<link rel="icon" type="image\/svg\+xml" href="data:image\/svg\+xml,[^"]+">/);
+  assert.ok(!decodeURIComponent(calm.match(/<link rel="icon"[^>]*href="([^"]+)"/)![1]!).includes('class="badge"'));
+
+  const busy = renderPage({ view, entries: [{ source: fakeSource({ attention: () => [item("1")] }), envelope: ok({}) }] });
+  assert.ok(decodeURIComponent(busy.match(/<link rel="icon"[^>]*href="([^"]+)"/)![1]!).includes('class="badge"'));
+});

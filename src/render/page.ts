@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
+import { faviconHref } from "./favicon.ts";
 import { esc, link } from "./html.ts";
 import { mascotSvg } from "./mascot.ts";
 import { isOld, staleAccordion } from "./old.ts";
@@ -121,6 +122,7 @@ export function renderPage(input: { view: View; entries: PageEntry[] }): string 
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="divination-token" content="__DIVINATION_TOKEN__">
 <title>Divination</title>
+<link rel="icon" type="image/svg+xml" href="${faviconHref(attention.length)}">
 <style>
 ${styles()}
 </style>
