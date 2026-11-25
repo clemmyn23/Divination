@@ -124,10 +124,22 @@ export interface Envelope<T> {
   data: T | null;
 }
 
+/** A lozenge: a small rounded label. `kind` picks one of the tag colours in `panels.css`. */
+export interface Lozenge {
+  tag: string;
+  kind?: "crew";
+}
+
 export interface AttentionItem {
   key: string;
   title: string;
+  /** Why this is waiting, in plain words. */
   reason: string;
+  /**
+   * The same, for the page, when some of it reads better as lozenges: plain words and
+   * lozenges, drawn in this order in place of `reason`.
+   */
+  parts?: (string | Lozenge)[];
   url?: string;
   /** When this started waiting, in epoch ms. Old items are folded away; undated ones never are. */
   at?: number;

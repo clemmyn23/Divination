@@ -64,7 +64,20 @@ export const github: Source<GithubData> = {
   attention: (data) =>
     data.prs
       .filter((pr) => NEEDS_YOU.includes(pr.rank.bucket))
-      .map((pr) => ({ key: pr.key, title: pr.title, reason: [...pr.rank.reasons, ...(pr.byCrew ? [CREW] : [])].join(", "), url: pr.url, at: pr.createdAt, doneKey: prDoneKey(pr) })),
+      .map((pr) => {
+        // The request ("rotation") is a lozenge here as it is in the queue, so it is not said again in words.
+        const rest = pr.rank.reasons.filter((reason) => reason !== pr.request).join(", ");
+        return {
+          key: pr.key,
+          title: pr.title,
+          reason: [...pr.rank.reasons, ...(pr.byCrew ? [CREW] : [])].join(", "),
+          // Who raised it comes first, with the crew lozenge beside the name it is about.
+          parts: [pr.author, ...(pr.byCrew ? [{ tag: CREW, kind: "crew" as const }] : []), { tag: pr.request }, ...(rest ? [rest] : [])],
+          url: pr.url,
+          at: pr.createdAt,
+          doneKey: prDoneKey(pr),
+        };
+      }),
   panels: githubPanels,
   enrichers: [prReview],
 };

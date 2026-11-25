@@ -218,6 +218,11 @@
   background: var(--tint, var(--lilac));
 }
 
+/* The needs-you panel's own tint is the loud accent; its lozenges take the review queue's soft one. */
+.attention .tag {
+  --tint: var(--blush);
+}
+
 /* Raised by a crew member: may bypass the crew's review. */
 .tag.crew {
   background: var(--mint);

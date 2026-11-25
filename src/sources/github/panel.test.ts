@@ -165,8 +165,24 @@ test("an empty queue says so", () => {
 test("PRs that need you become needs-you items with their reasons", () => {
   const items = github.attention(DATA, view);
   assert.deepEqual(items, [
-    { key: "o/r#1", title: "Change 1", reason: "touches billing, rotation, CI passing", url: "https://git.example.com/o/r/pull/1", at: NOW - 86_400_000, doneKey: "pr:o/r#1@aaa111" },
-    { key: "o/r#2", title: "Change 2", reason: "quick win, CI passing", url: "https://git.example.com/o/r/pull/2", at: NOW - 86_400_000, doneKey: "pr:o/r#2@sha2" },
+    {
+      key: "o/r#1",
+      title: "Change 1",
+      reason: "touches billing, rotation, CI passing",
+      parts: ["ann", { tag: "rotation" }, "touches billing, CI passing"],
+      url: "https://git.example.com/o/r/pull/1",
+      at: NOW - 86_400_000,
+      doneKey: "pr:o/r#1@aaa111",
+    },
+    {
+      key: "o/r#2",
+      title: "Change 2",
+      reason: "quick win, CI passing",
+      parts: ["ann", { tag: "direct" }, "quick win, CI passing"],
+      url: "https://git.example.com/o/r/pull/2",
+      at: NOW - 86_400_000,
+      doneKey: "pr:o/r#2@sha2",
+    },
   ]);
   assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs"]);
 });
@@ -215,6 +231,21 @@ test("numbers and CI words that came from a hand-dropped file cannot carry marku
   assert.ok(!html.includes("<img") && !html.includes("<script>") && !html.includes("<b>x</b>"));
   assert.ok(html.includes("+0 −0"));
   assert.ok(html.includes('<span class="ci-none">no CI</span>'));
+});
+
+test("a PR's needs-you item names its author, then carries the same lozenges as the queue, then the other reasons", () => {
+  const data: GithubData = {
+    login: "me",
+    prs: [
+      pr(1, "review_now", { author: "brian-luc", byCrew: true }),
+      pr(2, "quick_win", { rank: { score: 1, bucket: "quick_win", reasons: ["rotation"] } }),
+    ],
+  };
+  const [crew, plain] = github.attention(data, view);
+  // The author sits beside the crew lozenge; "rotation" is a lozenge, so it is not said again in words.
+  assert.deepEqual(crew!.parts, ["brian-luc", { tag: "raised by crew member", kind: "crew" }, { tag: "rotation" }, "touches billing, CI passing"]);
+  assert.equal(crew!.reason, "touches billing, rotation, CI passing, raised by crew member"); // the plain words are unchanged
+  assert.deepEqual(plain!.parts, ["ann", { tag: "rotation" }]); // nothing left to say in words
 });
 
 test("validate checks every field the panel prints, so a half-shaped file is refused before it is drawn", () => {

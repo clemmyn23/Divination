@@ -78,6 +78,8 @@ pieces together.
 
 5. **Attention.** Return one `AttentionItem` per thing waiting on me. Set `at` (when it
    started waiting) so old items fold away, and `doneKey` so the item can be ticked off.
+   `reason` says why in plain words; add `parts` when some of it reads better as
+   lozenges (see `attention` in `src/sources/github/index.ts`).
    A source with nothing to ask returns `[]`, as the calendar does.
 
 6. **Panels.** Return `Panel`s whose `html` is already escaped: run every piece of text

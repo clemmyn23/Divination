@@ -86,9 +86,15 @@ function attentionOf(entry: PageEntry, view: View): AttentionItem[] {
   }
 }
 
+/** Why an item is waiting: its parts when it has them, lozenges and all, otherwise its plain reason. */
+function why(it: AttentionItem): string {
+  if (!it.parts) return esc(it.reason);
+  return it.parts.map((part) => (typeof part === "string" ? esc(part) : `<span class="tag${part.kind === "crew" ? " crew" : ""}">${esc(part.tag)}</span>`)).join(" ");
+}
+
 function attentionList(items: AttentionItem[]): string {
   const rows = items
-    .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${esc(it.reason)}</span>${it.doneKey ? tick(it.doneKey, false) : ""}</li>`)
+    .map((it) => `<li>${link(it.title, it.url)} <span class="reason">${why(it)}</span>${it.doneKey ? tick(it.doneKey, false) : ""}</li>`)
     .join("\n");
   return `<ol class="attention">\n${rows}\n</ol>`;
 }
