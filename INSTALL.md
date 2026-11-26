@@ -8,7 +8,9 @@ Every command here is run from this folder. The tool's own commands are run as
 
 ## 1. What you need first
 
-- **macOS.** Tokens are kept in the macOS Keychain, and the login item uses launchd.
+- **macOS, Linux or Windows.** The tool is used every day on macOS. On Linux and Windows
+  the token store is written and unit-tested but has not yet been run on a real machine,
+  and the login item (step 7) is for macOS only.
 - **Node 24 or newer.** The tool runs its TypeScript directly, so there is no build step.
   `.nvmrc` names the version, for `nvm use` or `fnm use`.
 - **pnpm 10.** `corepack enable` gives you the version this project pins in
@@ -129,11 +131,21 @@ is limited.
 
 ### Where tokens are kept
 
-`secret set <name>` asks for the value in the terminal, hides what you type, and stores
-it in the macOS Keychain under the service `divination`. A token can also come from the
-environment as `DIVINATION_<NAME>`, such as `DIVINATION_SLACK`. Tokens are read from those
-two places and nowhere else; they are never written to config, to `out/`, to logs or into
-an error message.
+`secret set <name>` stores a token in your computer's own token store, under the name
+`divination`. That store's tool asks for the value in the terminal and hides what you
+type, so the token never passes through this program on its way in.
+
+| Platform | Where the token goes | What it needs |
+|---|---|---|
+| macOS | The Keychain | Nothing extra |
+| Linux | The desktop keyring (GNOME Keyring, KWallet) | The `secret-tool` command, from your distribution's libsecret tools package, and a keyring that is running |
+| Windows | The Credential Manager | Nothing extra; it uses Windows PowerShell (`powershell.exe`) |
+
+A token can also come from the environment as `DIVINATION_<NAME>`, such as
+`DIVINATION_SLACK`; the environment is checked first. Use it where there is no token
+store, such as a Linux server or WSL with no keyring. Tokens are read from those two
+places and nowhere else; they are never written to config, to `out/`, to logs or into an
+error message.
 
 ## 5. Check it
 
@@ -163,7 +175,7 @@ pnpm divination render --fixtures
 It prints the path of the sample page, `out/site/fixture.html`; open that file in your
 browser. Your real page is left alone.
 
-## 7. Keep it running from login (optional)
+## 7. Keep it running from login (optional, macOS only)
 
 ```bash
 pnpm divination schedule install

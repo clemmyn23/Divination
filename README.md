@@ -19,7 +19,8 @@ published anywhere.
 
 ## Start
 
-It needs macOS, Node 24 or newer and pnpm.
+It needs Node 24 or newer and pnpm. It is used every day on macOS;
+[INSTALL.md](INSTALL.md) says where Linux and Windows stand.
 
 ```bash
 pnpm install
@@ -44,7 +45,7 @@ All are run as `pnpm divination <command>`.
 | `tick [--force]` | Collect and redraw once; skipped outside working hours unless forced |
 | `enrich <enricher> <key \| all>` | Call Claude for one item. This is an LLM call |
 | `schedule install \| uninstall \| status` | Keep the page server running from login |
-| `secret set <name>` | Store a token in the macOS Keychain |
+| `secret set <name>` | Store a token in this computer's token store |
 | `sweep-plan` | Print what a hand-started Slack sweep should read |
 
 `pnpm test` runs the tests and `pnpm typecheck` checks the types.
@@ -133,8 +134,9 @@ Everything the tool writes goes under `out/`, which is not committed:
 
 ## Safety
 
-- Tokens are read from the macOS Keychain or the environment, and nowhere else. They are
-  never written to config, to `out/`, to logs or into an error message.
+- Tokens are read from the computer's own token store (the macOS Keychain, the Linux
+  desktop keyring or the Windows Credential Manager) or the environment, and nowhere else.
+  They are never written to config, to `out/`, to logs or into an error message.
 - The server listens on `127.0.0.1` only, answers only requests addressed to itself, and
   acts only on requests that carry a token it put in the page it served.
 - The page loads nothing from anywhere else.
