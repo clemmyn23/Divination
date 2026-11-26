@@ -114,15 +114,15 @@ gh auth login --hostname <your host>
 Review rules it applies (rotation, crew members, signals from the review channel) are
 written down in [docs/review-rules.md](docs/review-rules.md).
 
-A PR you raised waits on you, and shows in Needs you, when any of these is true:
+A PR you raised shows in Needs you only when a reviewer has spoken and the next move is yours:
 
-- its CI is failing
-- it conflicts with its base branch
-- a reviewer asked for changes and you have not pushed or replied since
-- someone has commented since you last pushed or replied
-- it is approved, its CI is green and GitHub reports nothing else required, so it is ready to merge
+- someone approved it, its CI is green, it merges cleanly and GitHub reports nothing else
+  required, so it is ready to merge
+- someone requested changes, and you have not pushed or replied since
 
-Otherwise it waits on others. A draft waits on nobody. "Pushed" is read from the time of
+The panel lists the rest under **To fix** (CI failing, conflicts with the base branch, a
+comment since you last pushed or replied), **Waiting on others** and **Drafts**; none of
+those reach Needs you. "Pushed" is read from the time of
 the PR's newest commit. Comments from an app's bot account never count; a review bot that
 signs in as a person does, until you add its username to `github.mine.ignoreCommenters`.
 

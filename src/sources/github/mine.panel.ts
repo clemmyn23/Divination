@@ -7,6 +7,7 @@ import type { GithubData, MyPull, ReviewState, Waits } from "./types.ts";
 
 const GROUPS: { title: string; on: Waits["on"] }[] = [
   { title: "Needs you", on: "me" },
+  { title: "To fix", on: "fix" },
   { title: "Waiting on others", on: "others" },
   { title: "Drafts", on: "draft" },
 ];
@@ -44,7 +45,7 @@ ${meta(pr)}${tick(key, isDone(key, view))}</li>`;
 const list = (prs: MyPull[], view: View) => `<ul class="items">\n${prs.map((pr) => item(pr, view)).join("\n")}\n</ul>`;
 
 /**
- * My own open PRs, grouped by who each is waiting on, one title and one meta line each.
+ * My own open PRs, grouped by what each is waiting on, one title and one meta line each.
  * PRs with nothing new for longer than `hideOlderThanDays` fold into one accordion at the
  * end, and PRs ticked off by hand into another.
  */

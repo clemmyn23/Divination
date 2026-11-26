@@ -59,33 +59,38 @@ test("a PR nobody has reviewed waits on others", () => {
   assert.deepEqual(waitsOn({ ...base, ci: "pending" }), { on: "others", reasons: ["CI running", "waiting on review"] });
 });
 
-test("failing CI, conflicts and unanswered comments each wait on me", () => {
-  assert.deepEqual(waitsOn({ ...base, ci: "fail" }), { on: "me", reasons: ["CI failing"] });
-  assert.deepEqual(waitsOn({ ...base, conflicts: true }), { on: "me", reasons: ["merge conflicts"] });
-  assert.deepEqual(waitsOn({ ...base, unanswered: 1 }), { on: "me", reasons: ["1 comment to answer"] });
+test("failing CI, conflicts and unanswered comments are mine to fix, but do not call for me", () => {
+  assert.deepEqual(waitsOn({ ...base, ci: "fail" }), { on: "fix", reasons: ["CI failing"] });
+  assert.deepEqual(waitsOn({ ...base, conflicts: true }), { on: "fix", reasons: ["merge conflicts"] });
+  assert.deepEqual(waitsOn({ ...base, unanswered: 1 }), { on: "fix", reasons: ["1 comment to answer"] });
   assert.deepEqual(waitsOn({ ...base, ci: "fail", conflicts: true, unanswered: 3 }), {
-    on: "me",
+    on: "fix",
     reasons: ["CI failing", "merge conflicts", "3 comments to answer"],
   });
 });
 
-test("requested changes wait on me until I push or reply, then on the reviewer", () => {
+test("requested changes call for me until I push or reply, then wait on the reviewer", () => {
   assert.deepEqual(waitsOn({ ...base, review: "changes_requested" }), { on: "me", reasons: ["changes requested"] });
+  // What else is wrong with it follows the reason it calls for me.
+  assert.deepEqual(waitsOn({ ...base, review: "changes_requested", ci: "fail" }), { on: "me", reasons: ["changes requested", "CI failing"] });
   assert.deepEqual(waitsOn({ ...base, review: "changes_requested", reviewAnswered: true }), {
     on: "others",
     reasons: ["waiting on a second look"],
   });
 });
 
-test("an approved PR is ready to merge once CI is green and nothing blocks it", () => {
+test("an approved PR calls for me once CI is green and nothing blocks it: it is ready to merge", () => {
   assert.deepEqual(waitsOn({ ...base, review: "approved" }), { on: "me", reasons: ["ready to merge"] });
+  // A repository with no CI has nothing that could fail.
   assert.deepEqual(waitsOn({ ...base, review: "approved", ci: "none" }), { on: "me", reasons: ["ready to merge"] });
+  assert.deepEqual(waitsOn({ ...base, review: "approved", unanswered: 1 }), { on: "me", reasons: ["ready to merge", "1 comment to answer"] });
+  assert.deepEqual(waitsOn({ ...base, review: "approved", ci: "fail" }), { on: "fix", reasons: ["CI failing"] });
   assert.deepEqual(waitsOn({ ...base, review: "approved", ci: "pending" }), { on: "others", reasons: ["CI running"] });
   assert.deepEqual(waitsOn({ ...base, review: "approved", blocked: true }), {
     on: "others",
     reasons: ["waiting on another approval or check"],
   });
-  assert.deepEqual(waitsOn({ ...base, review: "approved", conflicts: true }), { on: "me", reasons: ["merge conflicts"] });
+  assert.deepEqual(waitsOn({ ...base, review: "approved", conflicts: true }), { on: "fix", reasons: ["merge conflicts"] });
 });
 
 test("a draft waits on nobody, whatever state it is in", () => {

@@ -11,7 +11,7 @@ const MINE = "your PR";
 
 const BUCKETS = ["review_now", "quick_win", "flagged", "blocked", "skip", "excluded"];
 const CI = ["pass", "fail", "pending", "none"];
-const WAITS_ON = ["me", "others", "draft"];
+const WAITS_ON = ["me", "fix", "others", "draft"];
 
 const record = (value: unknown) => (typeof value === "object" && value !== null ? value : {}) as Record<string, unknown>;
 const strings = (value: unknown) => Array.isArray(value) && value.every((v) => typeof v === "string");
@@ -76,7 +76,7 @@ function reviewItem(pr: PullRequest): AttentionItem {
   };
 }
 
-/** A PR of my own that is waiting on me, as a line in Needs you. */
+/** A PR of my own that calls for me (ready to merge, or changes requested), as a line in Needs you. */
 function myItem(pr: MyPull): AttentionItem {
   const why = pr.waits.reasons.join(", ");
   return {

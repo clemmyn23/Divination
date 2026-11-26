@@ -44,18 +44,28 @@ export interface Standing {
   unanswered: number;
 }
 
-/** Who a PR of mine is waiting on. Anything I can act on makes it mine; a draft waits on nobody. */
+/**
+ * What a PR of mine is waiting on. It calls for me when a reviewer has spoken and the next
+ * move is mine: changes were requested, or it is approved, green and ready to merge. Failing
+ * CI, conflicts and unanswered comments are mine to fix but do not call for me by themselves.
+ * A draft waits on nobody.
+ */
 export function waitsOn(pr: Standing): Waits {
   if (pr.draft) return { on: "draft", reasons: [] };
 
-  const mine: string[] = [];
-  if (pr.ci === "fail") mine.push("CI failing");
-  if (pr.review === "changes_requested" && !pr.reviewAnswered) mine.push("changes requested");
-  if (pr.conflicts) mine.push("merge conflicts");
-  if (pr.unanswered > 0) mine.push(`${pr.unanswered} ${pr.unanswered === 1 ? "comment" : "comments"} to answer`);
+  const calls: string[] = [];
+  if (pr.review === "changes_requested" && !pr.reviewAnswered) calls.push("changes requested");
+  // No CI at all counts as green: there is nothing that could fail.
   const green = pr.ci === "pass" || pr.ci === "none";
-  if (pr.review === "approved" && green && !pr.conflicts && !pr.blocked) mine.push("ready to merge");
-  if (mine.length > 0) return { on: "me", reasons: mine };
+  if (pr.review === "approved" && green && !pr.conflicts && !pr.blocked) calls.push("ready to merge");
+
+  const fix: string[] = [];
+  if (pr.ci === "fail") fix.push("CI failing");
+  if (pr.conflicts) fix.push("merge conflicts");
+  if (pr.unanswered > 0) fix.push(`${pr.unanswered} ${pr.unanswered === 1 ? "comment" : "comments"} to answer`);
+
+  if (calls.length > 0) return { on: "me", reasons: [...calls, ...fix] };
+  if (fix.length > 0) return { on: "fix", reasons: fix };
 
   const others: string[] = [];
   if (pr.ci === "pending") others.push("CI running");
@@ -65,9 +75,9 @@ export function waitsOn(pr: Standing): Waits {
   return { on: "others", reasons: others };
 }
 
-const ORDER: Waits["on"][] = ["me", "others", "draft"];
+const ORDER: Waits["on"][] = ["me", "fix", "others", "draft"];
 
-/** The ones waiting on me first, drafts last, and the latest activity first within each. */
+/** The ones that call for me first, drafts last, and the latest activity first within each. */
 export function sortMine(prs: MyPull[]): MyPull[] {
   return [...prs].sort((a, b) => ORDER.indexOf(a.waits.on) - ORDER.indexOf(b.waits.on) || b.updatedAt - a.updatedAt);
 }

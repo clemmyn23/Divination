@@ -31,7 +31,8 @@ function mine(number: number, waits: Waits, over: Partial<MyPull> = {}): MyPull 
 }
 
 const READY = mine(7, { on: "me", reasons: ["ready to merge"] }, { review: "approved" });
-const BROKEN = mine(8, { on: "me", reasons: ["CI failing", "merge conflicts", "2 comments to answer"] }, { ci: "fail", conflicts: true, unanswered: 2 });
+const ASKED = mine(13, { on: "me", reasons: ["changes requested", "CI failing"] }, { review: "changes_requested", ci: "fail" });
+const BROKEN = mine(8, { on: "fix", reasons: ["CI failing", "merge conflicts", "2 comments to answer"] }, { ci: "fail", conflicts: true, unanswered: 2 });
 const WAITING = mine(9, { on: "others", reasons: ["CI running", "waiting on review"] }, { ci: "pending" });
 const SECOND_LOOK = mine(10, { on: "others", reasons: ["waiting on a second look"] }, { review: "changes_requested" });
 const DRAFT = mine(11, { on: "draft", reasons: [] }, { ci: "fail" });
@@ -48,15 +49,16 @@ test("my PRs are a sky panel that shares a column with the review queue, below i
   assert.equal(panels[1]!.html, myPrsPanel(DATA, view).html);
 });
 
-test("they are grouped by who each waits on, with counts, and an empty group is left out", () => {
+test("they are grouped by what each waits on, with counts, and an empty group is left out", () => {
   const html = myPrsPanel(DATA, view).html;
-  assert.ok(html.includes('<h3 class="group">Needs you · 2</h3>'));
-  assert.ok(html.includes('<h3 class="group">Waiting on others · 2</h3>'));
-  assert.ok(html.includes('<h3 class="group">Drafts · 1</h3>'));
-  assert.ok(html.indexOf("Needs you") < html.indexOf("Waiting on others"));
-  assert.ok(html.indexOf("Waiting on others") < html.indexOf("Drafts"));
+  assert.deepEqual(html.match(/<h3 class="group">.*<\/h3>/g), [
+    '<h3 class="group">Needs you · 1</h3>',
+    '<h3 class="group">To fix · 1</h3>',
+    '<h3 class="group">Waiting on others · 2</h3>',
+    '<h3 class="group">Drafts · 1</h3>',
+  ]);
   const onlyDraft = myPrsPanel({ login: "me", prs: [], mine: [DRAFT] }, view).html;
-  assert.ok(!onlyDraft.includes("Needs you") && !onlyDraft.includes("Waiting on others"));
+  assert.deepEqual(onlyDraft.match(/<h3 class="group">.*<\/h3>/g), ['<h3 class="group">Drafts · 1</h3>']);
 });
 
 test("each PR is a title and one meta line: where, size, CI, the review's verdict, and why", () => {
@@ -73,10 +75,12 @@ test("each PR is a title and one meta line: where, size, CI, the review's verdic
   ]);
 });
 
-test("only the ones waiting on me get the star", () => {
+test("only a PR that calls for me gets the star", () => {
   const html = myPrsPanel(DATA, view).html;
-  assert.equal((html.match(/class="item pr needs-you"/g) ?? []).length, 2);
-  assert.equal((html.match(/class="item pr"/g) ?? []).length, 3);
+  assert.equal((html.match(/class="item pr needs-you"/g) ?? []).length, 1);
+  assert.equal((html.match(/class="item pr"/g) ?? []).length, 4);
+  assert.ok(html.indexOf("My change 7") > html.indexOf('class="item pr needs-you"'));
+  assert.ok(html.indexOf("My change 7") < html.indexOf('class="item pr"'));
 });
 
 test("with none open, and in data collected before my PRs were, the panel says so", () => {
@@ -92,9 +96,9 @@ test("text from GitHub is escaped", () => {
 });
 
 test("a PR with nothing new for longer than the limit folds into the accordion", () => {
-  const quiet = mine(12, { on: "me", reasons: ["CI failing"] }, { updatedAt: NOW - 46 * DAY });
+  const quiet = mine(12, { on: "fix", reasons: ["CI failing"] }, { updatedAt: NOW - 46 * DAY });
   const html = myPrsPanel({ login: "me", prs: [], mine: [READY, quiet] }, view).html;
-  assert.ok(html.includes('<h3 class="group">Needs you · 1</h3>'));
+  assert.ok(html.includes('<h3 class="group">Needs you · 1</h3>') && !html.includes("To fix"));
   assert.ok(html.indexOf("My change 12") > html.indexOf('<details class="stale">'));
   assert.ok(html.indexOf("My change 7") < html.indexOf('<details class="stale">'));
 });
@@ -103,16 +107,16 @@ test("a PR can be ticked off, and comes back when its commit or what it waits on
   assert.equal(myDoneKey(BROKEN), "mine:o/r#8@sha8:CI failing,merge conflicts,2 comments to answer");
   const done = { ...view, done: { [myDoneKey(BROKEN)]: NOW } };
   const html = myPrsPanel(DATA, done).html;
-  assert.ok(html.includes('<h3 class="group">Needs you · 1</h3>'));
+  assert.ok(!html.includes("To fix"));
   assert.ok(html.indexOf("My change 8") > html.indexOf('<details class="stale done">'));
   assert.ok(html.includes(`data-done="${myDoneKey(READY)}" data-state="open"`));
   assert.ok(html.includes(`data-done="${myDoneKey(BROKEN)}" data-state="done"`));
 
-  const another = { ...BROKEN, unanswered: 3, waits: { on: "me" as const, reasons: ["CI failing", "merge conflicts", "3 comments to answer"] } };
-  assert.ok(myPrsPanel({ login: "me", prs: [], mine: [another] }, done).html.includes('<h3 class="group">Needs you · 1</h3>'));
+  const another = { ...BROKEN, unanswered: 3, waits: { on: "fix" as const, reasons: ["CI failing", "merge conflicts", "3 comments to answer"] } };
+  assert.ok(myPrsPanel({ login: "me", prs: [], mine: [another] }, done).html.includes('<h3 class="group">To fix · 1</h3>'));
 });
 
-test("the ones waiting on me are in Needs you, marked as mine", () => {
+test("a PR of mine is in Needs you only when it is ready to merge or changes were requested, marked as mine", () => {
   assert.deepEqual(github.attention(DATA, view), [
     {
       key: "mine:o/r#7",
@@ -123,14 +127,16 @@ test("the ones waiting on me are in Needs you, marked as mine", () => {
       at: NOW - DAY,
       doneKey: myDoneKey(READY),
     },
+  ]);
+  assert.deepEqual(github.attention({ login: "me", prs: [], mine: [ASKED, BROKEN, WAITING, DRAFT] }, view), [
     {
-      key: "mine:o/r#8",
-      title: "My change 8",
-      reason: "your PR, CI failing, merge conflicts, 2 comments to answer",
-      parts: [{ tag: "your PR" }, "CI failing, merge conflicts, 2 comments to answer"],
-      url: "https://git.example.com/o/r/pull/8",
+      key: "mine:o/r#13",
+      title: "My change 13",
+      reason: "your PR, changes requested, CI failing",
+      parts: [{ tag: "your PR" }, "changes requested, CI failing"],
+      url: "https://git.example.com/o/r/pull/13",
       at: NOW - DAY,
-      doneKey: myDoneKey(BROKEN),
+      doneKey: myDoneKey(ASKED),
     },
   ]);
   assert.deepEqual(github.attention({ login: "me", prs: [] }, view), []);

@@ -105,12 +105,12 @@ const queue: GithubData = {
   login: "sam",
   mine: [
     mine(425, "Remember the last audience filter", [130, 22], "pass", "approved", "me", ["ready to merge"], 0),
-    mine(417, "Make the send-time picker keyboard friendly", [240, 60], "fail", "none", "me", ["CI failing", "2 comments to answer"]),
     mine(411, "Tidy the template gallery's empty state", [85, 30], "pass", "changes_requested", "me", ["changes requested", "merge conflicts"], 2),
+    mine(417, "Make the send-time picker keyboard friendly", [240, 60], "fail", "none", "fix", ["CI failing", "2 comments to answer"]),
     mine(424, "Cache the segment counts", [310, 44], "pending", "none", "others", ["CI running", "waiting on review"], 0),
     mine(414, "Drop the legacy colour picker", [20, 640], "pass", "changes_requested", "others", ["waiting on a second look"], 3),
     mine(422, "Try a new layout for the report page", [520, 80], "fail", "none", "draft", [], 1),
-    mine(350, "Move the footer links into config", [44, 12], "pass", "none", "me", ["1 comment to answer"], 80),
+    mine(350, "Move the footer links into config", [44, 12], "pass", "none", "fix", ["1 comment to answer"], 80),
   ],
   prs: [
     pr(412, "Move invoice totals to the new tax service", "ana", [640, 210], "pass", "rotation", "review_now", ["touches billing", "large change", "rotation", "4 days old", "CI passing"], 9),

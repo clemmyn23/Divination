@@ -45,9 +45,12 @@ export interface PullRequest {
 /** Where the reviews of one of my PRs stand. */
 export type ReviewState = "approved" | "changes_requested" | "none";
 
-/** Who one of my PRs is waiting on, and why in plain words. */
+/**
+ * What one of my PRs is waiting on, and why in plain words. `me` calls for me now: it is
+ * ready to merge, or a reviewer asked for changes. `fix` is mine to fix, without the call.
+ */
 export interface Waits {
-  on: "me" | "others" | "draft";
+  on: "me" | "fix" | "others" | "draft";
   reasons: string[];
 }
 

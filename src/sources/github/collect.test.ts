@@ -221,9 +221,9 @@ test("my own open PRs are collected, each with what it is waiting on", async () 
   assert.deepEqual(
     data.mine!.map((p) => [p.key, p.ci, p.review, p.conflicts, p.unanswered, p.waits]),
     [
-      // newest activity first among the ones waiting on me
-      ["o/r#8", "fail", "none", true, 1, { on: "me", reasons: ["CI failing", "merge conflicts", "1 comment to answer"] }],
+      // the one that calls for me first, then the one that is mine to fix
       ["o/r#7", "pass", "approved", false, 0, { on: "me", reasons: ["ready to merge"] }],
+      ["o/r#8", "fail", "none", true, 1, { on: "fix", reasons: ["CI failing", "merge conflicts", "1 comment to answer"] }],
     ],
   );
   assert.deepEqual(data.prs.map((p) => p.key), ["o/r#1"]); // the review queue is not mixed in
@@ -283,7 +283,7 @@ test("comments from the people I have chosen to ignore do not wait on an answer"
   assert.deepEqual((await collectGithub(ctx)).mine!.map((p) => [p.unanswered, p.waits.on]), [[0, "others"]]);
 });
 
-test("requested changes wait on me until I push, then on the reviewer", async () => {
+test("requested changes call for me until I push, then wait on the reviewer", async () => {
   const asked = { user: { login: "ann", type: "User" }, state: "CHANGES_REQUESTED", submitted_at: "2026-11-23T03:00:00Z", commit_id: "mmm777", body: "Split this." };
   const waiting = await collectGithub(setup(githubRoutes([], "me", [{ ...MINE1, reviews: [asked] }])).ctx);
   assert.deepEqual(waiting.mine![0]!.waits, { on: "me", reasons: ["changes requested"] });
