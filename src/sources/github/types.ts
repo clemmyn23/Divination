@@ -74,6 +74,36 @@ export interface MyPull {
   /** Comments from other people since I last commented or pushed. */
   unanswered: number;
   waits: Waits;
+  /** Missing in data collected before fixes were. */
+  fix?: FixState;
+}
+
+/** One try at fixing one of my PRs. Kept in `out/fix/attempts.json`, a list per PR key. */
+export interface Attempt {
+  at: number;
+  what: "ci" | "conflicts";
+  /** The failing checks it was for. Empty for conflicts. */
+  checks: string[];
+  /** The head commit the attempt started from. */
+  startSha: string;
+  /** The commit it pushed, when it pushed one. */
+  pushedSha?: string;
+  outcome: "pushed" | "gave-up" | "failed";
+  /** Claude's summary, or why it stopped. Plain words for the PR's line. */
+  text: string;
+  /** False when the attempt ended before Claude was asked. Only true ones count toward the limit. */
+  ranClaude: boolean;
+  costUsd?: number;
+}
+
+/** Where one of my PRs stands with the Fix button. */
+export interface FixState {
+  /** A Fix button belongs on this PR now. */
+  can: boolean;
+  /** Attempts in a row have reached `github.fix.maxAttempts`. */
+  spent: boolean;
+  /** The latest attempt on the current chain. */
+  last?: { at: number; outcome: Attempt["outcome"]; text: string };
 }
 
 export interface GithubData {
