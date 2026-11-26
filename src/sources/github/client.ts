@@ -19,6 +19,7 @@ export interface PullDetail {
   additions: number;
   deletions: number;
   changed_files: number;
+  title?: string;
   /** "open" or "closed". */
   state?: string;
   draft?: boolean;

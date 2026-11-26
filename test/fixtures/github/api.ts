@@ -129,6 +129,7 @@ export function githubRoutes(pulls: PullFixture[] = [PR1, PR2], login = "me", mi
       deletions: p.deletions,
       changed_files: 1,
       state: "open",
+      title: `ABC-${p.number}: PR number ${p.number}`,
       head: { sha: p.sha, ref: `me/ABC-${p.number}`, repo: { full_name: "o/r" } },
       base: { ref: "main", repo: { full_name: "o/r" } },
       user: { login },
