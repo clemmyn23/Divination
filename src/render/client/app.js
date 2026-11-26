@@ -3,7 +3,9 @@
 //
 // The only requests it makes are to the local server that served the page, and the only
 // connection it keeps open is to that server's activity stream, while the log is open. It
-// asks for an LLM call in exactly one place: when a button marked data-enrich is pressed.
+// asks for an LLM call in exactly two places: when a button marked data-enrich is pressed,
+// and when a button marked data-fix is. A data-fix press is also the only thing here that
+// leads to a change outside this machine: the server pushes a commit to one of my own PRs.
 
 (() => {
   // ---- Theme: the browser's business only ----
@@ -39,6 +41,7 @@
   const FAST_POLL_MS = 1000;
   const el = (id) => document.getElementById(id);
   const enrichButtons = () => document.querySelectorAll("button[data-enrich]");
+  const fixButtons = () => document.querySelectorAll("button[data-fix]");
   const ticks = () => document.querySelectorAll("button[data-done]");
 
   // ---- Keeping my place across a reload: each panel's scroll position and its open folds ----
@@ -93,6 +96,7 @@
   let lastFinishedAt = null; // when the last job we know of finished
   let pending = null; // { button, label, since }: a sparkle button waiting on its job
   let working = false; // a refresh or a Claude call is running
+  let fixingAll = false; // a Fix all is running, so its button is the one that stops it
 
   function setStatus(text) {
     const status = el("live-status");
@@ -276,11 +280,31 @@
     }
     for (const button of ticks()) button.disabled = false;
 
+    // While a Fix all runs, its own button stops it after the PR in hand; every other Fix button waits.
+    fixingAll = busy && status.job.name === "fix:all";
+    for (const button of fixButtons()) {
+      const all = button.dataset.fix === "all";
+      if (all && fixingAll) {
+        const stopping = Boolean(status.fix && status.fix.stopping);
+        if (pending && pending.button === button) pending = null; // it is a stop button now, not a pressed one
+        button.textContent = stopping ? "Stopping after this one…" : "Stop after this one";
+        button.disabled = stopping;
+        continue;
+      }
+      if (pending && button === pending.button) continue;
+      if (all) button.textContent = "Fix all";
+      button.disabled = busy;
+    }
+
     const running = sources.filter((s) => s.state === "running");
     const reading = running.length > 0 ? ` ${running.map((s) => s.title).join(", ")}` : "";
     // Claude is at work for a sparkle button, or for a source it is reading after Refresh now.
     const asking = busy && (status.job.name.startsWith("enrich") || running.some((s) => s.asking));
-    if (busy) setStatus(asking ? `asking Claude…${reading}` : `updating…${reading}`);
+    const fixing = busy && status.job.name.startsWith("fix:");
+    if (fixing) {
+      const at = status.fix;
+      setStatus(at ? `fixing ${at.key}${at.total > 1 ? `, ${at.index} of ${at.total}` : ""}` : "fixing…");
+    } else if (busy) setStatus(asking ? `asking Claude…${reading}` : `updating…${reading}`);
     else if (status.lastJob && !status.lastJob.ok) setStatus(`failed: ${status.lastJob.error}`);
     else if (!status.live) setStatus("paused");
     else setStatus(status.nextTickAt ? `next update ${clock(status.nextTickAt)}` : "live");
@@ -296,6 +320,7 @@
       if (button) button.disabled = true;
     }
     for (const button of enrichButtons()) button.disabled = true;
+    for (const button of fixButtons()) button.disabled = true;
     for (const button of ticks()) button.disabled = true;
     setStatus("server not running");
   }
@@ -413,7 +438,27 @@
       return;
     }
 
-    // The one place an LLM call is ever asked for.
+    // Fix one of my PRs, or all that can be fixed. The server has Claude edit files in a
+    // throwaway worktree and pushes the result to that PR's branch.
+    const fix = target.closest("button[data-fix]");
+    if (fix) {
+      if (fix.dataset.fix === "all" && fixingAll) {
+        // The same button, while Fix all runs: stop after the PR in hand.
+        fix.disabled = true;
+        const asked = await act("/api/fix/stop", {});
+        if (!asked) fix.disabled = false;
+        return;
+      }
+      if (pending) return;
+      pending = { button: fix, label: fix.textContent, since: lastFinishedAt };
+      fix.textContent = "Fixing…";
+      fix.disabled = true;
+      const started = await act("/api/fix", { key: fix.dataset.fix });
+      if (!started) restorePending();
+      return;
+    }
+
+    // An LLM call for a draft or a summary.
     const enrich = target.closest("button[data-enrich]");
     if (enrich && !pending) {
       pending = { button: enrich, label: enrich.textContent, since: lastFinishedAt };
