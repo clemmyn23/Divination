@@ -7,6 +7,9 @@ import { readEnvelope, transportOf } from "../core/pipeline.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
 import { pageHtml, renderSite } from "../render/site.ts";
+import { sweepWorktrees } from "../sources/github/fix/git.ts";
+import { type FixProgress, fixJob } from "../sources/github/fix/job.ts";
+import { type fixOne, workRoot } from "../sources/github/fix/run.ts";
 import { type ActivityUpdate, createActivity } from "./activity.ts";
 import { createFeeder } from "./feed.ts";
 import { createJobs } from "./jobs.ts";
@@ -15,6 +18,8 @@ import { type Timers, createLive } from "./live.ts";
 const MAX_BODY = 10_000;
 const MAX_FIELD = 300;
 const TOKEN_PLACEHOLDER = "__DIVINATION_TOKEN__";
+/** One of my PRs (`owner/repo#number`), or every fixable one. */
+const FIX_KEY = /^(?:all|[\w.-]+\/[\w.-]+#\d{1,9})$/;
 
 /**
  * The page is self-contained: it may run the one script it carries (named by its hash, so
@@ -67,16 +72,21 @@ const ROUTES: Record<string, "GET" | "POST"> = {
   "/api/tick": "POST",
   "/api/enrich": "POST",
   "/api/done": "POST",
+  "/api/fix": "POST",
+  "/api/fix/stop": "POST",
 };
 
 /**
  * The local page server, as a function from request to response.
  *
  * It serves the page, owns the live-update timer, and is the only way a button press
- * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now through `feed`. It answers only requests addressed to its own loopback
- * address, and only acts on a POST that carries the token it put in the page.
+ * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now through `feed`, a
+ * Fix button through `fixJob`. A Fix button is also the only thing here that changes
+ * anything outside this machine: it pushes a commit to one of my own PRs. It answers only
+ * requests addressed to its own loopback address, and only acts on a POST that carries the
+ * token it put in the page.
  */
-export function createApp(base: Context, sources: Source<any>[], token: string, timers?: Timers) {
+export function createApp(base: Context, sources: Source<any>[], token: string, timers?: Timers, deps: { fix?: typeof fixOne } = {}) {
   // Everything the tool reports through `log` is also kept for the page's activity view.
   const activity = createActivity(
     base.now,
@@ -101,6 +111,11 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
   };
 
   const jobs = createJobs(ctx.now);
+  // The fix that is running, if one is: which PR it is on, and whether a Fix all has been asked to stop.
+  let fixing: FixProgress | null = null;
+  let stopping = false;
+  // A fix that was killed with the server leaves its worktree behind. Nothing waits on this.
+  void sweepWorktrees(ctx.exec, Object.values(ctx.config.github.fix.clones), workRoot(ctx));
   const feed = createFeeder();
   const startedAt = ctx.now(); // changes on every restart, which tells an open page to reload
   const port = ctx.config.server.port;
@@ -121,6 +136,7 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
     sources: activity.sources(),
     job: jobs.current(),
     lastJob: jobs.last(),
+    fix: fixing ? { ...fixing, stopping } : null,
   });
 
   async function handle(req: AppRequest): Promise<AppResponse> {
@@ -227,6 +243,36 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
           renderSite(ctx, sources);
         });
         return started ? json(202, status()) : refuse(409, "busy");
+      }
+
+      // The Fix button: Claude edits files in a throwaway worktree and this tool pushes the
+      // result to that PR's branch. Like enrich, nothing but a press reaches it.
+      case "/api/fix": {
+        const { key } = fields;
+        if (typeof key !== "string" || key.length > MAX_FIELD || !FIX_KEY.test(key)) return refuse(400, '"key" must be a PR, as owner/repo#number, or "all"');
+        const started = jobs.run(`fix:${key}`, async () => {
+          try {
+            await fixJob(ctx, sources, key, {
+              shouldStop: () => stopping,
+              onProgress: (progress) => {
+                fixing = progress;
+              },
+              ...(deps.fix ? { fix: deps.fix } : {}),
+            });
+          } finally {
+            fixing = null;
+            stopping = false;
+          }
+        });
+        return started ? json(202, status()) : refuse(409, "busy");
+      }
+
+      // Stop a Fix all after the PR it is on. The one route that acts while a job runs; a
+      // fix in hand is never cut short.
+      case "/api/fix/stop": {
+        if (jobs.current()?.name !== "fix:all") return refuse(409, "nothing to stop");
+        stopping = true;
+        return json(200, status());
       }
     }
     return refuse(404, "not found");

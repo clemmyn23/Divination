@@ -86,10 +86,10 @@ test("posts without the token are refused and do nothing", async () => {
 test("status reports the timer, the page and the jobs", async () => {
   const { status, body } = await json(req("GET", "/api/status"));
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body).sort(), ["job", "lastJob", "live", "nextTickAt", "renderedAt", "sources", "startedAt"]);
+  assert.deepEqual(Object.keys(body).sort(), ["fix", "job", "lastJob", "live", "nextTickAt", "renderedAt", "sources", "startedAt"]);
   assert.deepEqual(body.sources.map((x: { id: string; title: string; state: string }) => [x.id, x.title, x.state]), [["fake", "Fake", "ok"]]);
   assert.equal(body.startedAt, ctx.now());
-  assert.deepEqual([body.live, body.nextTickAt, body.job, body.lastJob], [true, null, null, null]);
+  assert.deepEqual([body.live, body.nextTickAt, body.job, body.lastJob, body.fix], [true, null, null, null, null]);
 });
 
 test("pause and start through the API", async () => {
@@ -381,4 +381,116 @@ test("a Claude read that fails is what the refresh reports, though the plain ref
   assert.deepEqual([status.lastJob.ok, status.lastJob.error], [false, "Fake: claude failed: Failed to authenticate"]);
   assert.equal(status.sources[0].state, "failed");
   assert.equal(status.sources[0].error, "claude failed: Failed to authenticate");
+});
+
+// ---- Fixing a PR ----
+
+/** An app whose GitHub source has two fixable PRs, with a fix that waits to be let go. */
+function fixApp(local: object = {}) {
+  const c = contextWith({ sources: ["github"], ...local }, { exec: fakeExec({}) });
+  const pr = (number: number) => ({
+    key: `o/r#${number}`, repo: "o/r", number, title: `My change ${number}`, url: `https://git.example.com/o/r/pull/${number}`, headSha: `sha${number}`,
+    createdAt: c.now() - 1000, updatedAt: c.now() - 1000, draft: false, additions: 1, deletions: 1, ci: "fail", review: "none", conflicts: false, unanswered: 0,
+    waits: { on: "fix", reasons: ["CI failing"] }, fix: { can: true, spent: false },
+  });
+  const data = { login: "me", prs: [], mine: [pr(8), pr(9)] };
+  mkdirSync(dirname(c.paths.data("github")), { recursive: true });
+  writeFileSync(c.paths.data("github"), JSON.stringify({ source: "github", ok: true, collectedAt: c.now(), attemptedAt: c.now(), data }));
+  const fixed: string[] = [];
+  const release: (() => void)[] = [];
+  const fix = (_ctx: Context, key: string) =>
+    new Promise<{ key: string; outcome: "pushed"; text: string }>((resolve) => {
+      fixed.push(key);
+      release.push(() => resolve({ key, outcome: "pushed", text: "done" }));
+    });
+  const fixing = createApp(c, [fakeSource({ id: "github", collect: async () => data })], "tok", fakeTimers(), { fix });
+  const post = async (path: string, body = "") => {
+    const res = await fixing.handle(req("POST", path, { body }));
+    return { status: res.status, body: JSON.parse(res.body) };
+  };
+  const letGo = async () => {
+    release.shift()!();
+    await settle();
+  };
+  return { ctx: c, app: fixing, fixed, post, letGo, status: () => fixing.status() };
+}
+
+test("a fix press starts a job named for its PR, and a second press while it runs is refused", async () => {
+  const f = fixApp();
+  assert.equal((await f.post("/api/fix", '{"key":"o/r#8"}')).status, 202);
+  await settle();
+  assert.equal(f.status().job!.name, "fix:o/r#8");
+  assert.deepEqual(f.status().fix, { key: "o/r#8", index: 1, total: 1, stopping: false });
+  assert.equal((await f.post("/api/fix", '{"key":"o/r#9"}')).status, 409);
+  await f.letGo();
+  assert.deepEqual(f.fixed, ["o/r#8"]);
+  assert.equal(f.status().job, null);
+  assert.equal(f.status().fix, null);
+  assert.deepEqual([f.status().lastJob!.name, f.status().lastJob!.ok], ["fix:o/r#8", true]);
+});
+
+test("the fix key must be a PR key or all", async () => {
+  const f = fixApp();
+  for (const body of ["{}", '{"key":7}', '{"key":"all; rm"}', '{"key":"o/r"}', `{"key":"o/r#${"1".repeat(400)}"}`]) {
+    assert.equal((await f.post("/api/fix", body)).status, 400, body);
+  }
+  assert.deepEqual(f.fixed, []);
+});
+
+test("a fix needs the page's token and the right host", async () => {
+  const f = fixApp();
+  const body = '{"key":"o/r#8"}';
+  assert.equal((await f.app.handle(req("POST", "/api/fix", { headers: { "x-divination-token": "wrong" }, body }))).status, 403);
+  assert.equal((await f.app.handle(req("POST", "/api/fix", { headers: { host: "evil.example.com" }, body }))).status, 403);
+  assert.equal((await f.app.handle(req("GET", "/api/fix"))).status, 405);
+  assert.equal((await f.app.handle(req("POST", "/api/fix/stop", { headers: { "x-divination-token": "wrong" } }))).status, 403);
+  assert.deepEqual(f.fixed, []);
+});
+
+test("status says which PR a Fix all is on, and it can be stopped after the PR in hand", async () => {
+  const f = fixApp();
+  assert.equal((await f.post("/api/fix", '{"key":"all"}')).status, 202);
+  await settle();
+  assert.deepEqual(f.status().fix, { key: "o/r#8", index: 1, total: 2, stopping: false });
+
+  const stopped = await f.post("/api/fix/stop"); // answered while the job runs, not refused as busy
+  assert.equal(stopped.status, 200);
+  assert.deepEqual(stopped.body.fix, { key: "o/r#8", index: 1, total: 2, stopping: true });
+
+  await f.letGo();
+  assert.deepEqual(f.fixed, ["o/r#8"]); // the second was skipped
+  assert.equal(f.status().job, null);
+  assert.equal(f.status().fix, null);
+
+  // The next Fix all is not stopped by the last one's request.
+  await f.post("/api/fix", '{"key":"all"}');
+  await settle();
+  await f.letGo();
+  await f.letGo();
+  assert.deepEqual(f.fixed, ["o/r#8", "o/r#8", "o/r#9"]);
+});
+
+test("stop with nothing to stop is refused", async () => {
+  const f = fixApp();
+  assert.equal((await f.post("/api/fix/stop")).status, 409);
+  await f.post("/api/fix", '{"key":"o/r#8"}'); // a single fix is never cut short
+  await settle();
+  assert.equal((await f.post("/api/fix/stop")).status, 409);
+  await f.letGo();
+});
+
+test("worktrees left by a killed run are swept when the server starts", async () => {
+  const c = contextWith({ sources: ["fake"], github: { fix: { clones: { "o/r": "/work/monolith" } } } }, { exec });
+  const stray = `${c.paths.out}/fix/work/o-r-3`;
+  mkdirSync(stray, { recursive: true });
+  createApp(c, [fakeSource()], "tok", fakeTimers());
+  await settle();
+  assert.ok(!existsSync(stray));
+  assert.ok(exec.calls.some((call) => call.join(" ").includes("worktree remove --force")));
+
+  // With nothing left behind, starting the server runs no git at all.
+  const quiet = fakeExec({});
+  createApp(contextWith({ sources: ["fake"] }, { exec: quiet }), [fakeSource()], "tok", fakeTimers());
+  await settle();
+  assert.deepEqual(quiet.calls, []);
 });
