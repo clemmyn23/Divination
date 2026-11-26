@@ -3,3 +3,5 @@ config/local.yaml
 config/local.json
 node_modules/
 .DS_Store
+# A lock file can record the address of the registry it was installed from.
+pnpm-lock.yaml

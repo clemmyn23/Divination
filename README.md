@@ -19,22 +19,21 @@ published anywhere.
 
 ## Start
 
-Needs Node 24 or newer (it runs TypeScript directly; there is no build step), pnpm and
-macOS.
+It needs macOS, Node 24 or newer and pnpm.
 
 ```bash
 pnpm install
 cp config/local.example.yaml config/local.yaml   # then edit it
-node bin/divination.ts doctor                     # says what each source still needs
-node bin/divination.ts serve                      # prints the address of the page
+pnpm divination doctor                            # says what each source still needs
+pnpm divination serve                             # prints the address of the page
 ```
 
-`serve` keeps running. It restarts itself when the code or the config changes, so the
-page is never drawn by out-of-date code.
+[INSTALL.md](INSTALL.md) walks through each step: what to install first, your config, how
+to give GitHub, Slack and the calendar access, and how to keep the page running from login.
 
 ## Commands
 
-All are run as `node bin/divination.ts <command>`.
+All are run as `pnpm divination <command>`.
 
 | Command | What it does |
 |---|---|
@@ -68,14 +67,32 @@ All are run as `node bin/divination.ts <command>`.
   tasks" and are not counted.
 - **The theme button** switches between following the system, light and dark.
 
+## Your own PRs
+
+A PR you raised shows in Needs you only when a reviewer has spoken and the next move is yours:
+
+- someone approved it, its CI is green, it merges cleanly and GitHub reports nothing else
+  required, so it is ready to merge
+- someone requested changes, and you have not pushed or replied since
+
+The My PRs panel lists the rest under **To fix** (CI failing, conflicts with the base
+branch, a comment since you last pushed or replied), **Waiting on others** and **Drafts**;
+none of those reach Needs you. "Pushed" is read from the time of the PR's newest commit.
+Comments from an app's bot account never count; a review bot that signs in as a person
+does, until you add its username to `github.mine.ignoreCommenters`.
+
+The review queue's own rules for a review crew (rotation, crew members, signals from the
+review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply only when
+`github.crew` is filled in.
+
 ## When Claude is called
 
 Collecting and drawing never call an LLM. Claude is called only when you ask:
 
 - a button with a sparkle on the page (**Draft review**, **Summarise threads**), or the
   `enrich` command typed by hand;
-- `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session (see
-  below);
+- `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session
+  ([INSTALL.md](INSTALL.md#4-give-each-source-access) says when you need them);
 - **Refresh now**, but only with `claudeReads.onRefresh: true`, and only for sources whose
   `transport` is `inbox`. After its usual refresh it runs the same two reads headless, on
   Haiku, with nothing but the connector's read-only tools. The timer never does this.
@@ -97,85 +114,10 @@ connector it reads through. To leave the others out it first lists the MCP serve
 machine and account have (`claude mcp list`, about 20 seconds, remembered for an hour).
 The activity log shows what each run loaded and the tokens it used.
 
-## What each source needs
-
-A source gets its data in one of two ways, set by `transport` in its config block:
-fetched by the tool itself (`api`, `ics`), or read from a file that something else
-dropped in `out/inbox/` (`inbox`).
-
-### Review queue and My PRs (GitHub)
-
-Uses the `gh` command-line tool's login for the host in `github.host`.
-
-```bash
-gh auth login --hostname <your host>
-```
-
-If you are in a review crew, fill in the `github.crew` block: the crew's GitHub team, its
-members and its review channel. The rules that switches on (rotation, crew members,
-signals from the review channel) are written down in
-[docs/review-rules.md](docs/review-rules.md). The block is optional; without it the review
-queue simply lists what is waiting on your review.
-
-A PR you raised shows in Needs you only when a reviewer has spoken and the next move is yours:
-
-- someone approved it, its CI is green, it merges cleanly and GitHub reports nothing else
-  required, so it is ready to merge
-- someone requested changes, and you have not pushed or replied since
-
-The panel lists the rest under **To fix** (CI failing, conflicts with the base branch, a
-comment since you last pushed or replied), **Waiting on others** and **Drafts**; none of
-those reach Needs you. "Pushed" is read from the time of
-the PR's newest commit. Comments from an app's bot account never count; a review bot that
-signs in as a person does, until you add its username to `github.mine.ignoreCommenters`.
-
-### Slack
-
-Two ways:
-
-- **Web API** (`"transport": "api"`): create an internal app from
-  [docs/slack-app-manifest.json](docs/slack-app-manifest.json), install it, and store its
-  user token with `secret set slack`. It has read-only user scopes and no bot. Your
-  workspace may need an admin to approve the install.
-- **By hand** (`"transport": "inbox"`): run `/slack-sweep` in a Claude session opened on
-  this folder. It reads the conversations in `slack.groups` through the Slack connector,
-  on Haiku, and writes plain facts to `out/inbox/slack.json`. The tool's own code then
-  decides what needs you. It is only as fresh as your last sweep. With
-  `claudeReads.onRefresh` on, Refresh now runs the sweep for you (a few minutes).
-
-Set `slack.teamId` to make Slack links open the Slack app instead of the browser.
-
-### Today (calendar)
-
-Two ways:
-
-- **iCal address** (`"transport": "ics"`): copy your calendar's secret iCal address and
-  store it with `secret set calendar_ics`. Some workspaces switch this address off.
-- **By hand** (`"transport": "inbox"`): run `/calendar-read` in a Claude session opened on
-  this folder. It reads today's events through the Google Calendar connector, on Haiku,
-  and writes them to `out/inbox/calendar.json`. With `claudeReads.onRefresh` on, Refresh
-  now runs the read for you.
-
-For Refresh now to run either read, the `claude` command-line tool must be signed in
-(`claude`, then `/login`) and able to reach the connector. `doctor` checks the sign-in.
-The tools each read may use are listed under `slack.sweep.tools` and
-`calendar.read.tools`; keep them to read-only ones.
-
-## Config
-
-- `config/defaults.yaml` holds every setting with its default. It is committed.
-- `config/local.yaml` holds yours and is merged over the defaults. It is not committed.
-  `config/local.example.yaml` shows the shape.
-
-They are YAML, so comments are welcome. Settings merge key by key; a list in your file
-replaces the whole default list.
-
-Settings you are most likely to change: `me`, `sources`, `tick`, `claudeReads`, `github.host`,
-`github.crew`, `github.mine.ignoreCommenters`,
-`github.rank.riskPaths`, `slack.groups`,
-`slack.muteAuthors`, `hideOlderThanDays`.
-
 ## Where things live
+
+Your settings are in `config/local.yaml`, merged over `config/defaults.yaml`, which lists
+every setting with its default. [INSTALL.md](INSTALL.md#3-your-config) says how they merge.
 
 Everything the tool writes goes under `out/`, which is not committed:
 
@@ -189,15 +131,10 @@ Everything the tool writes goes under `out/`, which is not committed:
 | `out/state.json` | Whether live updates are on |
 | `out/logs/` | What happened, one event per line |
 
-## Secrets
-
-Tokens are read from the environment (`DIVINATION_<NAME>`) or the macOS Keychain (service
-`divination`), and nowhere else. They are never written to config, to `out/`, to logs or
-into an error message. `secret set <name>` asks for the value in the terminal and hides
-what you type.
-
 ## Safety
 
+- Tokens are read from the macOS Keychain or the environment, and nowhere else. They are
+  never written to config, to `out/`, to logs or into an error message.
 - The server listens on `127.0.0.1` only, answers only requests addressed to itself, and
   acts only on requests that carry a token it put in the page it served.
 - The page loads nothing from anywhere else.

@@ -96,7 +96,7 @@ pieces together.
    to `sources` in config.
 
 9. **Sample page.** Add an entry to `test/fixtures/page/entries.ts` so
-   `node bin/divination.ts render --fixtures` shows the new panel with invented data.
+   `pnpm divination render --fixtures` shows the new panel with invented data.
    Look at it in both themes and in a narrow window.
 
 Write each test before the code it tests, and watch it fail first.
@@ -176,7 +176,7 @@ See `src/sources/github/review.enricher.ts` and `src/sources/slack/summary.enric
 ## Before you call it done
 
 - `pnpm test` and `pnpm typecheck` pass.
-- `node bin/divination.ts doctor` says something useful for your source when it is not
+- `pnpm divination doctor` says something useful for your source when it is not
   set up, and passes when it is.
 - The panel has been checked against the real service, not only the fixtures. Real data
   finds things fixtures do not.
