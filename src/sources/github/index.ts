@@ -17,6 +17,8 @@ const record = (value: unknown) => (typeof value === "object" && value !== null 
 const strings = (value: unknown) => Array.isArray(value) && value.every((v) => typeof v === "string");
 
 /** What is wrong with the list of my own PRs. It may be missing: data collected before they were has none. */
+const FIX_OUTCOMES = ["pushed", "gave-up", "failed"];
+
 function validateMine(mine: unknown): string[] {
   if (mine === undefined) return [];
   if (!Array.isArray(mine)) return ["mine must be a list"];
@@ -33,6 +35,17 @@ function validateMine(mine: unknown): string[] {
     if (!CI.includes(pr.ci as string)) problems.push(`mine[${i}].ci must be one of ${CI.join(", ")}`);
     if (!WAITS_ON.includes(waits.on as string)) problems.push(`mine[${i}] needs waits.on`);
     if (!strings(waits.reasons)) problems.push(`mine[${i}] needs waits.reasons`);
+    // Missing in data collected before fixes were.
+    if (pr.fix !== undefined) {
+      const fix = record(pr.fix);
+      if (typeof fix.can !== "boolean" || typeof fix.spent !== "boolean") problems.push(`mine[${i}].fix must say can and spent as true or false`);
+      else if (fix.last !== undefined) {
+        const last = record(fix.last);
+        if (typeof last.at !== "number" || !FIX_OUTCOMES.includes(last.outcome as string) || typeof last.text !== "string") {
+          problems.push(`mine[${i}].fix.last needs at, outcome and text`);
+        }
+      }
+    }
   });
   return problems;
 }

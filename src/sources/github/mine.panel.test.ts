@@ -152,3 +152,13 @@ test("validate refuses PRs of mine in the wrong shape and accepts data without a
   assert.ok(problems.includes("mine[0] needs waits.on") && problems.includes("mine[0] needs waits.reasons"));
   assert.ok(!problems.includes("mine[0] needs key"));
 });
+
+test("validate checks a PR's fix state, and accepts a PR collected before there was one", () => {
+  const withFix = (fix: unknown) => github.validate({ login: "me", prs: [], mine: [{ ...READY, fix }] });
+  assert.deepEqual(withFix({ can: true, spent: false }), []);
+  assert.deepEqual(withFix({ can: false, spent: true, last: { at: 5, outcome: "pushed", text: "Moved the helper." } }), []);
+  assert.deepEqual(withFix({ can: "yes" }), ["mine[0].fix must say can and spent as true or false"]);
+  assert.deepEqual(withFix("on"), ["mine[0].fix must say can and spent as true or false"]);
+  assert.deepEqual(withFix({ can: true, spent: false, last: { at: "now", outcome: "pushed", text: 7 } }), ["mine[0].fix.last needs at, outcome and text"]);
+  assert.deepEqual(github.validate({ login: "me", prs: [], mine: [READY] }), []);
+});
