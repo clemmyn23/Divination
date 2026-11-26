@@ -3,6 +3,7 @@ import type { Context } from "../../core/types.ts";
 import { countAlerts } from "./alerts.ts";
 import { conversationsFromConfig, cut, isMuted, permalink } from "./normalise.ts";
 import type { SlackData, SlackMessage, SlackThread } from "./types.ts";
+import { windowStart } from "./window.ts";
 
 // What a Slack sweep drops in `out/inbox/slack.json`. It is written by an LLM reading
 // Slack through a connector, so it holds plain facts and nothing is trusted to be worked
@@ -44,7 +45,7 @@ export function sweepPlan(ctx: Context): SweepPlan {
   const now = ctx.now();
   return {
     me: { id: ctx.config.slack.userId },
-    windowOldest: String(Math.floor(now / 1000 - ctx.config.slack.windowHours * 3600)),
+    windowOldest: String(Math.floor(windowStart(ctx) / 1000)),
     todayOldest: String(startOfDay(now, ctx.config.me.timezone) / 1000),
     file: "out/inbox/slack.json",
     conversations: conversationsFromConfig(ctx.config).map((c) => ({

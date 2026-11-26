@@ -94,11 +94,12 @@ export function serveCommand(getCtx: () => Context, all: Source<any>[]): Command
       console.log(`http://127.0.0.1:${ctx.config.server.port}`);
       if (!server.app.live.state().live) console.log("live updates are paused; press Start on the page to resume");
 
-      // Asked to stop (a restart, or `kill`): let a running update or Claude call finish first.
+      // Asked to stop (a restart, or `kill`): let a running update, Claude call or review
+      // on its way to GitHub finish first.
       process.once("SIGTERM", () => {
         server.close();
         whenIdle(
-          () => server.app.status().job !== null,
+          () => server.app.busy(),
           () => process.exit(0),
         );
       });

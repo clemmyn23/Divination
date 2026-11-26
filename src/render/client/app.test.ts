@@ -21,6 +21,11 @@ class FakeElement {
   }
   closest(selector: string): FakeElement | null {
     if (selector === `#${this.id}`) return this;
+    if (this.within[selector]) return this.within[selector];
+    if (selector === "button[data-review-open]" && "reviewOpen" in this.dataset) return this;
+    if (selector === "button[data-review-close]" && "reviewClose" in this.dataset) return this;
+    if (selector === "button[data-review-post]" && "reviewPost" in this.dataset) return this;
+    if (selector === "button[data-copy-text]" && "copyText" in this.dataset) return this;
     if (selector === "button[data-copy]" && "copy" in this.dataset) return this;
     if (selector === "button[data-enrich]" && "enrich" in this.dataset) return this;
     if (selector === "button[data-done]" && "done" in this.dataset) return this;
@@ -36,6 +41,83 @@ class FakeElement {
   // For the log, which scrolls.
   scrollHeight = 0;
   clientHeight = 0;
+  // For a review's dialog and what is in it: boxes to tick and type in, and who holds whom.
+  value = "";
+  checked = false;
+  /** What `closest` answers for the things this element sits inside. */
+  within: Record<string, FakeElement> = {};
+  /** What `querySelector` and `querySelectorAll` answer for the things inside this element. */
+  found: Record<string, FakeElement[]> = {};
+  querySelector(selector: string): FakeElement | null {
+    return this.found[selector]?.[0] ?? null;
+  }
+  querySelectorAll(selector: string): FakeElement[] {
+    return this.found[selector] ?? [];
+  }
+  handlers: Record<string, (() => void)[]> = {};
+  addEventListener(type: string, fn: () => void) {
+    (this.handlers[type] ??= []).push(fn);
+  }
+  showModal() {
+    this.open = true;
+  }
+  /** Closing a dialog tells whoever is listening, as a browser does. */
+  close() {
+    this.open = false;
+    for (const fn of this.handlers.close ?? []) fn();
+  }
+}
+
+/** A drafted review's dialog as the panel draws it: a summary and two notes, a message box, three kinds, Post and Close. */
+function fakeReview(key: string, draft: string) {
+  const dialog = new FakeElement(`review-${key}`);
+  dialog.dataset.review = key;
+  dialog.dataset.draft = draft;
+  const inside = (element: FakeElement) => {
+    element.within["dialog.review-dialog"] = dialog;
+    return element;
+  };
+  const entry = (pick: string, text: string) => {
+    const finding = new FakeElement(`finding-${pick}`);
+    const box = inside(new FakeElement(`pick-${pick}`));
+    box.dataset.pick = pick;
+    const words = inside(new FakeElement(`text-${pick}`));
+    words.value = text;
+    const copy = inside(new FakeElement(`copy-${pick}`, "Copy"));
+    copy.dataset.copyText = "";
+    finding.found.textarea = [words];
+    for (const element of [box, words, copy]) element.within[".finding"] = finding;
+    return { box, words, copy };
+  };
+  const entries = { summary: entry("summary", "Adds an avatar menu."), first: entry("0", "The handler is never removed."), second: entry("1", "Rename `x`.") };
+  const kind = (value: string, checked = false) => {
+    const radio = inside(new FakeElement(`kind-${value}`));
+    radio.value = value;
+    radio.checked = checked;
+    return radio;
+  };
+  const kinds = { comment: kind("COMMENT", true), approve: kind("APPROVE"), changes: kind("REQUEST_CHANGES") };
+  const message = inside(new FakeElement("message"));
+  const post = inside(new FakeElement("post", "Post"));
+  post.dataset.reviewPost = "";
+  post.disabled = true;
+  const close = inside(new FakeElement("close", "Close"));
+  close.dataset.reviewClose = "";
+  const status = new FakeElement("review-status");
+  const open = new FakeElement(`open-${key}`, "Open review");
+  open.dataset.reviewOpen = key;
+  dialog.found = {
+    "input[data-pick]": [entries.summary.box, entries.first.box, entries.second.box],
+    'input[type="radio"]': [kinds.comment, kinds.approve, kinds.changes],
+    "textarea[data-message]": [message],
+    "button[data-review-post]": [post],
+    ".review-status": [status],
+  };
+  /** Pick one kind, as a click on its radio does. */
+  const choose = (radio: FakeElement) => {
+    for (const other of Object.values(kinds)) other.checked = other === radio;
+  };
+  return { dialog, open, ...entries, kinds, choose, message, post, close, status };
 }
 
 /** Stands in for the browser's EventSource: records where it connected, and delivers what a test emits. */
@@ -70,6 +152,10 @@ const LIVE: Status = { live: true, nextTickAt: Date.parse("2026-11-25T03:15:00Z"
 interface Options {
   /** What sessionStorage holds when the page loads. */
   session?: string;
+  /** What sessionStorage holds of reviews being worked on. */
+  reviews?: string;
+  /** The fingerprint of the draft in the review's dialog. */
+  draftPrint?: string;
   storageBroken?: boolean;
   /** What the server answers. `null` means the server cannot be reached. */
   status?: Status | null;
@@ -115,6 +201,9 @@ function page(stored: string | null, opts: Options = {}) {
   fold.className = "stale done";
   const session = new Map<string, string>();
   if (opts.session !== undefined) session.set("divination-view", opts.session);
+  if (opts.reviews !== undefined) session.set("divination-review", opts.reviews);
+  const review = fakeReview("o/r#1@aaa111", opts.draftPrint ?? "print-1");
+  const copied: string[] = [];
 
   const store = new Map<string, string>();
   if (stored !== null) store.set("divination-theme", stored);
@@ -124,6 +213,8 @@ function page(stored: string | null, opts: Options = {}) {
     activity: [] as { at: number; level: string; text: string }[],
     status: opts.status === undefined ? LIVE : opts.status,
     postStatus: 200,
+    /** What the server answers a posted review with. */
+    review: { status: 200, body: { comments: 2, inBody: 1 } as object, hold: null as Promise<void> | null },
     requests: [] as { url: string; method: string; headers: Record<string, string>; body: unknown }[],
   };
   const intervals: { fn: () => unknown; ms: number }[] = [];
@@ -140,13 +231,25 @@ function page(stored: string | null, opts: Options = {}) {
     },
     setTimeout: (fn: () => void) => fn(),
     setInterval: (fn: () => unknown, ms: number) => intervals.push({ fn, ms }),
-    navigator: { clipboard: { writeText: async () => {} } },
+    navigator: {
+      clipboard: {
+        writeText: async (text: string) => {
+          copied.push(text);
+        },
+      },
+    },
     location: { reload: () => { reloads++; } },
     fetch: async (url: string, init: { method?: string; headers?: Record<string, string>; body?: string } = {}) => {
       const method = init.method ?? "GET";
       // Copy the headers: objects made inside the sandbox belong to another realm and never compare equal.
       server.requests.push({ url, method, headers: { ...(init.headers ?? {}) }, body: init.body ? JSON.parse(init.body) : undefined });
       if (server.status === null) throw new Error("connection refused");
+      if (method === "POST" && url === "/api/review/post") {
+        if (server.review.hold) await server.review.hold; // GitHub is taking its time
+        const { status, body } = server.review;
+        if (status === 200) server.status = { ...server.status, renderedAt: server.status.renderedAt + 1 }; // the server redraws the page
+        return { ok: status === 200, status, json: async () => body };
+      }
       if (method === "POST") {
         if (server.postStatus === 409) return { ok: false, status: 409, json: async () => ({ error: "busy" }) };
         if (url === "/api/live") server.status = { ...server.status, live: (JSON.parse(init.body!) as { on: boolean }).on, nextTickAt: null };
@@ -186,6 +289,7 @@ function page(stored: string | null, opts: Options = {}) {
         if (selector === "button[data-fix]") return [fixAll, fix];
         if (selector === ".panel-body") return [body];
         if (selector === "details.stale") return [fold];
+        if (selector === "dialog.review-dialog") return [review.dialog];
         return [];
       },
       addEventListener: (type: string, fn: (event: unknown) => unknown) => {
@@ -206,6 +310,13 @@ function page(stored: string | null, opts: Options = {}) {
     body,
     fold,
     session,
+    review,
+    copied,
+    /** Something in a dialog was ticked or typed in, as the browser reports it. */
+    async input(target: FakeElement) {
+      for (const type of ["input", "change"]) for (const fn of listeners[type] ?? []) await fn({ target });
+      await settle();
+    },
     toggle: elements["theme-toggle"]!,
     liveToggle: elements["live-toggle"]!,
     refreshNow: elements["refresh-now"]!,
@@ -751,4 +862,311 @@ test("with the server gone the Fix buttons cannot be pressed", async () => {
   const p = page(null, { status: null });
   await p.finishParsing();
   assert.deepEqual([p.fix.disabled, p.fixAll.disabled], [true, true]);
+});
+
+// A drafted review, opened up
+
+const REVIEW_KEY = "o/r#1@aaa111";
+
+test("Open review opens that PR's dialog and Close closes it, with or without the server", async () => {
+  for (const status of [LIVE, null]) {
+    const p = page(null, { status });
+    await p.finishParsing();
+    await p.click(p.review.open);
+    assert.equal(p.review.dialog.open, true);
+    await p.click(p.review.close);
+    assert.equal(p.review.dialog.open, false);
+    assert.equal(p.posts().length, 0);
+  }
+});
+
+test("Post is off until there is something to send, and its label says what it will send", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post · Comment", true]);
+
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post 1 comment · Comment", false]);
+
+  r.second.box.checked = true;
+  r.choose(r.kinds.changes);
+  await p.input(r.kinds.changes);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post 2 comments · Request changes", false]);
+
+  r.first.box.checked = false;
+  r.second.box.checked = false;
+  await p.input(r.second.box);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post · Request changes", true]); // a change request must say something
+
+  r.message.value = "lgtm";
+  await p.input(r.message);
+  assert.equal(r.post.disabled, false);
+
+  r.message.value = "  ";
+  r.choose(r.kinds.approve);
+  await p.input(r.kinds.approve);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post · Approve", false]); // an approval may be bare
+
+  r.choose(r.kinds.comment);
+  r.summary.box.checked = true;
+  await p.input(r.summary.box);
+  assert.deepEqual([r.post.textContent, r.post.disabled], ["Post · Comment", false]); // the summary alone is something to say
+});
+
+test("Post sends what is ticked, as it was edited, with my message and the kind I chose", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  r.second.box.checked = true;
+  r.second.words.value = "Rename `x` to `total`.";
+  r.summary.box.checked = true;
+  r.message.value = "lgtm";
+  r.choose(r.kinds.approve);
+  await p.input(r.message);
+  await p.click(r.post);
+
+  assert.deepEqual(p.posts().map((q) => [q.url, q.headers["x-divination-token"], q.body]), [
+    ["/api/review/post", "tok", { key: REVIEW_KEY, draft: "print-1", event: "APPROVE", message: "lgtm", summary: "Adds an avatar menu.", notes: [{ index: 1, text: "Rename `x` to `total`." }] }],
+  ]);
+  assert.equal(r.status.textContent, "Posted: 2 comments on lines, 1 in the overall comment.");
+  assert.equal(r.post.disabled, true); // one press, one review
+
+  await p.click(r.post);
+  assert.equal(p.posts().length, 1);
+});
+
+test("a note that is not ticked is not sent, and neither is a ticked note whose text was cleared", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  r.first.box.checked = true;
+  r.first.words.value = "  ";
+  r.second.box.checked = true;
+  await p.input(r.second.box);
+  assert.equal(r.post.textContent, "Post 1 comment · Comment");
+  await p.click(r.post);
+  assert.deepEqual(p.posts()[0]!.body, { key: REVIEW_KEY, draft: "print-1", event: "COMMENT", message: "", notes: [{ index: 1, text: "Rename `x`." }] });
+});
+
+test("what was posted is said plainly, whatever the mix", async () => {
+  const said = async (body: object) => {
+    const p = page(null);
+    p.server.review.body = body;
+    await p.finishParsing();
+    p.review.message.value = "lgtm";
+    await p.input(p.review.message);
+    await p.click(p.review.post);
+    return p.review.status.textContent;
+  };
+  assert.equal(await said({ comments: 0, inBody: 0 }), "Posted.");
+  assert.equal(await said({ comments: 1, inBody: 0 }), "Posted: 1 comment on a line.");
+  assert.equal(await said({ comments: 0, inBody: 2 }), "Posted: 2 in the overall comment.");
+});
+
+test("a post that was refused says why in the dialog, and can be tried again", async () => {
+  const p = page(null);
+  p.server.review = { status: 409, body: { error: "the PR has new commits since this draft was written; rerun the review" }, hold: null };
+  await p.finishParsing();
+  const r = p.review;
+  r.message.value = "lgtm";
+  await p.input(r.message);
+  await p.click(r.post);
+  assert.equal(r.status.textContent, "Not posted: the PR has new commits since this draft was written; rerun the review");
+  assert.equal(r.post.disabled, false);
+
+  p.server.review = { status: 200, body: { comments: 0, inBody: 0 }, hold: null };
+  await p.click(r.post);
+  assert.equal(r.status.textContent, "Posted.");
+});
+
+test("a page whose token is no longer good says to reopen the review, and keeps the ticks", async () => {
+  const p = page(null);
+  p.server.review = { status: 403, body: { error: "missing or wrong token" }, hold: null };
+  await p.finishParsing();
+  const r = p.review;
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  await p.click(r.post);
+  assert.match(r.status.textContent, /out of date/);
+  assert.ok(p.session.get("divination-review")!.includes('"on":true'));
+});
+
+test("with the server down, Post is off", async () => {
+  const p = page(null, { status: null });
+  await p.finishParsing();
+  const r = p.review;
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  assert.equal(r.post.disabled, true);
+  await p.click(r.post);
+  assert.equal(p.posts().length, 0);
+});
+
+test("nothing posts a review but a press of Post", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  r.choose(r.kinds.approve);
+  await p.input(r.kinds.approve);
+  await p.click(r.first.copy);
+  await p.click(r.close);
+  await p.poll();
+  assert.equal(p.posts().length, 0);
+});
+
+test("while a review is open the page does not reload itself; it does when the review is closed", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.review.open);
+  p.server.status = { ...LIVE, renderedAt: 101 };
+  await p.poll();
+  await p.poll();
+  assert.equal(p.reloads, 0);
+  await p.click(p.review.close);
+  assert.equal(p.reloads, 1);
+});
+
+test("closing a review reloads nothing when the page has not changed", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.review.open);
+  await p.poll();
+  await p.click(p.review.close);
+  assert.equal(p.reloads, 0);
+});
+
+test("after a post the page waits for the review to be closed before it shows the redrawn page", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  r.message.value = "lgtm";
+  await p.input(r.message);
+  await p.click(r.post);
+  await p.poll();
+  assert.equal(p.reloads, 0);
+  assert.equal(r.status.textContent, "Posted: 2 comments on lines, 1 in the overall comment.");
+  await p.click(r.close);
+  assert.equal(p.reloads, 1);
+});
+
+test("ticks, edits, my message and the kind are kept across a reload", async () => {
+  const first = page(null);
+  await first.finishParsing();
+  const a = first.review;
+  a.second.box.checked = true;
+  a.second.words.value = "Rename `x` to `total`.";
+  a.message.value = "lgtm";
+  a.choose(a.kinds.changes);
+  await first.input(a.message);
+
+  const again = page(null, { reviews: first.session.get("divination-review")! });
+  await again.finishParsing();
+  const b = again.review;
+  assert.deepEqual([b.summary.box.checked, b.first.box.checked, b.second.box.checked], [false, false, true]);
+  assert.equal(b.second.words.value, "Rename `x` to `total`.");
+  assert.equal(b.first.words.value, "The handler is never removed.");
+  assert.equal(b.message.value, "lgtm");
+  assert.deepEqual([b.kinds.comment.checked, b.kinds.approve.checked, b.kinds.changes.checked], [false, false, true]);
+  assert.deepEqual([b.post.textContent, b.post.disabled], ["Post 1 comment · Request changes", false]);
+});
+
+test("what was kept for one draft is not put on another: a rerun starts clean", async () => {
+  const first = page(null);
+  await first.finishParsing();
+  first.review.first.box.checked = true;
+  first.review.message.value = "lgtm";
+  await first.input(first.review.message);
+
+  const rerun = page(null, { reviews: first.session.get("divination-review")!, draftPrint: "print-2" });
+  await rerun.finishParsing();
+  assert.equal(rerun.review.first.box.checked, false);
+  assert.equal(rerun.review.message.value, "");
+});
+
+test("a posted review's ticks are not kept", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  assert.ok(p.session.get("divination-review")!.includes(REVIEW_KEY));
+  await p.click(r.post);
+  assert.ok(!p.session.get("divination-review")!.includes(REVIEW_KEY));
+});
+
+test("junk kept for reviews, or storage that is blocked, does not stop the page", async () => {
+  for (const reviews of ["{not json", "null", "[]", '{"o/r#1@aaa111":7}', '{"o/r#1@aaa111":{"draft":"print-1","picks":"all","event":"MERGE","message":7}}']) {
+    const p = page(null, { reviews });
+    await p.finishParsing();
+    assert.equal(p.review.kinds.comment.checked, true, reviews);
+    assert.equal(p.review.message.value, "", reviews);
+    assert.equal(p.liveStatus.textContent.startsWith("next update"), true, reviews);
+  }
+  const blocked = page(null, { storageBroken: true });
+  await blocked.finishParsing();
+  blocked.review.first.box.checked = true;
+  await blocked.input(blocked.review.first.box);
+  assert.equal(blocked.review.post.disabled, false);
+});
+
+test("Copy in the dialog copies the note as I have edited it", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.review.second.words.value = "Rename `x` to `total`.";
+  await p.click(p.review.second.copy);
+  assert.deepEqual(p.copied, ["Rename `x` to `total`."]);
+});
+
+test("a review closed while it is being posted is not reloaded into a page that offers to post it again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  p.server.status = { ...LIVE, renderedAt: 101 }; // the page changed behind the open review
+  await p.poll();
+
+  let answer = () => {};
+  p.server.review.hold = new Promise((resolve) => (answer = resolve));
+  const pressing = p.click(r.post);
+  await settle();
+  assert.ok(!p.session.get("divination-review")!.includes(REVIEW_KEY)); // dropped as it is sent, not when it is answered
+  r.dialog.close(); // Escape, while GitHub is still answering
+  assert.equal(p.reloads, 0);
+
+  answer();
+  await pressing;
+  assert.equal(p.reloads, 1); // now the page may catch up, and it comes back with nothing ticked
+  assert.equal(p.posts().length, 1);
+});
+
+test("a refused review's ticks are kept again, for the next try", async () => {
+  const p = page(null);
+  p.server.review = { status: 409, body: { error: "the PR has new commits" }, hold: null };
+  await p.finishParsing();
+  p.review.first.box.checked = true;
+  await p.input(p.review.first.box);
+  await p.click(p.review.post);
+  assert.ok(p.session.get("divination-review")!.includes(REVIEW_KEY));
+});
+
+test("when the server does not answer, the page does not claim the review was not posted", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  r.message.value = "lgtm";
+  await p.input(r.message);
+  p.server.status = null; // it stopped after the page last heard from it
+  await p.click(r.post);
+  assert.match(r.status.textContent, /may or may not have been posted/);
+  assert.match(r.status.textContent, /Check the PR/);
 });

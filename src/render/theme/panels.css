@@ -13,6 +13,7 @@
  *   p.quiet, p.empty    nothing to show
  *   p.headline, svg.terrain, ul.events   the calendar panel
  *   details.review > div.finding > pre   a drafted review, folded shut until opened
+ *   dialog.review-dialog                 the same draft opened up, to tick, edit and post
  *   details.stale                        old things, folded shut (see src/render/old.ts)
  *   button.tick, details.stale.done      marking a line done (see src/render/done.ts)
  *
@@ -515,6 +516,129 @@ button[data-fix="all"] {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 11.5px;
   white-space: pre-wrap;
+}
+
+/* A drafted review opened up: notes that scroll, and a footer that stays put. */
+
+.review-dialog {
+  width: min(860px, 94vw);
+  max-height: 88vh;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+/* Only while open: a dialog that is given a display of its own is never hidden. */
+.review-dialog[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.review-dialog::backdrop {
+  background: rgba(20, 14, 34, 0.55);
+}
+
+.review-dialog h2 {
+  margin: 0;
+  padding: 8px 14px;
+  font-size: 13.5px;
+  background: var(--blush);
+}
+
+.review-dialog > .meta {
+  margin: 0;
+  padding: 6px 14px;
+}
+
+.review-notes {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px;
+}
+
+.review-dialog .finding {
+  padding: 8px 8px 10px;
+}
+
+.review-dialog .pick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.review-dialog .pick .where {
+  font-size: 12px;
+}
+
+.review-dialog textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 4px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: var(--paper);
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+  /* As tall as its words, where the browser can do that; the rows are the fallback. */
+  field-sizing: content;
+  min-height: 2.6em;
+  max-height: 40vh;
+}
+
+/* A note that is not ticked is not going anywhere: its text steps back. */
+.review-dialog .finding:not(:has(input:checked)) textarea {
+  opacity: 0.6;
+}
+
+.review-post {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid var(--line);
+}
+
+.review-post textarea {
+  flex: 1 1 220px;
+  width: auto;
+  margin: 0;
+  font-family: inherit;
+}
+
+.review-kind {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.review-kind label {
+  cursor: pointer;
+}
+
+.review-status {
+  margin: 0;
+  padding: 0 14px 10px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.review-status:empty {
+  display: none;
 }
 
 /* Narrower windows: every panel is one grid cell. */

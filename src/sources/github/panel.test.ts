@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { NOW, view } from "../../../test/helpers.ts";
 import { github } from "./index.ts";
 import { githubPanels } from "./panel.ts";
+import { postedKey } from "./review/post.ts";
 import type { Bucket, GithubData, PullRequest } from "./types.ts";
 
 function pr(number: number, bucket: Bucket, over: Partial<PullRequest> = {}): PullRequest {
@@ -55,7 +56,8 @@ test("a drafted review can be run again: the draft is followed by a rerun button
   const review = { verdict: "comment", summary: "Fine.", findings: [] };
   const html = githubPanels(DATA, { ...view, enrich: { "pr-review": { "o/r#1@aaa111": review } } })[0]!.html;
   const rerun = '<button data-enrich="pr-review" data-key="o/r#1@aaa111" data-again>Rerun review</button>';
-  assert.ok(html.includes(`</details>\n${rerun}`));
+  assert.ok(html.includes(`</dialog>\n${rerun}`));
+  assert.ok(html.indexOf("</details>") < html.indexOf(rerun));
   // It replaces that PR's draft button; a PR with no draft yet still has the plain one.
   assert.ok(!html.includes('data-key="o/r#1@aaa111">Draft review</button>'));
   assert.equal((html.match(/>Draft review<\/button>/g) ?? []).length, 1);
@@ -269,4 +271,91 @@ test("validate checks every field the panel prints, so a half-shaped file is ref
   assert.match(broken({ title: 7 }).join(), /title/);
   assert.match(broken({ createdAt: "yesterday" }).join(), /createdAt/);
   assert.match(broken({ rank: { bucket: "nonsense", score: 1, reasons: [] } }).join(), /rank\.bucket/);
+});
+
+// ---- The review dialog ----
+
+const DRAFT = {
+  verdict: "request_changes",
+  summary: "Adds an avatar menu.",
+  findings: [
+    { file: "src/a.ts", line: "3", severity: "blocker", comment: "The handler is never removed." },
+    { file: "src/b.ts", line: "9-12", severity: "nit", comment: "Rename `x`." },
+  ],
+};
+const drafted = (draft: object = DRAFT, done: Record<string, number> = {}) =>
+  githubPanels(DATA, { ...view, done, enrich: { "pr-review": { "o/r#1@aaa111": draft } } })[0]!.html;
+
+test("a drafted review has a button that opens it in a dialog, between the folded draft and the rerun button", () => {
+  const html = drafted();
+  const open = '<button type="button" data-review-open="o/r#1@aaa111">Open review</button>';
+  assert.ok(html.includes(`</details>\n${open}\n<dialog class="review-dialog" data-review="o/r#1@aaa111"`));
+  assert.ok(html.indexOf("</dialog>") < html.indexOf("Rerun review"));
+  assert.match(html, /<dialog class="review-dialog" data-review="o\/r#1@aaa111" data-draft="[0-9a-f]{16}"/);
+  // A PR with no draft has neither.
+  assert.ok(!githubPanels(DATA, view)[0]!.html.includes("review-dialog"));
+  assert.ok(!githubPanels(DATA, view)[0]!.html.includes("data-review-open"));
+});
+
+test("the dialog lists the summary and every note, each with a checkbox and its text to edit", () => {
+  const html = drafted();
+  assert.equal((html.match(/<input type="checkbox" autocomplete="off" data-pick=/g) ?? []).length, 3);
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="summary">'));
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="0">'));
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="1">'));
+  assert.match(html, /<textarea data-text[^>]*>Adds an avatar menu\.<\/textarea>/);
+  assert.match(html, /<textarea data-text[^>]*>The handler is never removed\.<\/textarea>/);
+  assert.match(html, /<textarea data-text[^>]*>Rename `x`\.<\/textarea>/);
+  assert.ok(html.includes("src/a.ts:3 · blocker"));
+  assert.ok(html.includes("src/b.ts:9-12 · nit"));
+  assert.equal((html.match(/data-copy-text/g) ?? []).length, 2); // one per note; the summary has none
+});
+
+test("nothing is ticked to start, and Comment is the kind selected whatever the draft says", () => {
+  const html = drafted();
+  assert.ok(html.includes("Draft says: request changes"));
+  assert.equal((html.match(/ checked/g) ?? []).length, 1);
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="COMMENT" checked>'));
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="APPROVE">'));
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="REQUEST_CHANGES">'));
+});
+
+test("beside the Post button is a box for my own message, and Post starts switched off", () => {
+  const html = drafted();
+  assert.match(html, /<textarea data-message[^>]*><\/textarea>/);
+  assert.ok(html.includes('<button type="button" data-review-post disabled>Post</button>'));
+  assert.ok(html.includes('<button type="button" data-review-close>Close</button>'));
+  assert.ok(html.includes('<p class="review-status" role="status"></p>'));
+});
+
+test("a note's text cannot close its box or carry markup into the page", () => {
+  const nasty = { ...DRAFT, summary: 'a & b "q"', findings: [{ file: 'x"><b>.ts', line: "1", severity: "nit", comment: "</textarea><script>alert(1)</script>" }] };
+  const html = drafted(nasty);
+  assert.ok(!html.includes("</textarea><script>"));
+  assert.ok(!html.includes("<script>"));
+  assert.ok(html.includes("&lt;/textarea&gt;&lt;script&gt;alert(1)&lt;/script&gt;"));
+  assert.ok(html.includes("a &amp; b &quot;q&quot;"));
+  assert.ok(!html.includes('x"><b>'));
+});
+
+test("the dialog carries a fingerprint of its draft, so a rerun's dialog is a different one", () => {
+  const print = (html: string) => /data-draft="([0-9a-f]{16})"/.exec(html)![1];
+  assert.equal(print(drafted()), print(drafted()));
+  assert.notEqual(print(drafted()), print(drafted({ ...DRAFT, summary: "Changed." })));
+});
+
+test("a posted review says when it was posted, under the draft and in its dialog", () => {
+  const html = drafted(DRAFT, { [postedKey("o/r#1@aaa111")]: NOW });
+  assert.match(html, /Rerun review<\/button>\n<p class="fix-note">Posted \d\d:\d\d<\/p>/);
+  assert.match(html, /<p class="review-status" role="status">Posted \d\d:\d\d<\/p>/);
+  assert.ok(!drafted().includes("Posted"));
+  // A post at another commit is not this draft's.
+  assert.ok(!drafted(DRAFT, { [postedKey("o/r#1@old000")]: NOW }).includes("Posted"));
+});
+
+test("the browser is told not to refill the dialog's boxes itself: only the page's own record does", () => {
+  const html = drafted();
+  const inputs = html.match(/<(?:input|textarea) [^>]*>/g) ?? [];
+  assert.equal(inputs.length, 3 + 3 + 3 + 1); // three ticks, three texts, three kinds, my message
+  for (const input of inputs) assert.ok(input.includes('autocomplete="off"'), input);
 });

@@ -263,3 +263,17 @@ test("a fix reads as a story: which PR, each step, how it ended", () => {
     ["info", "Fix all finished: 1 pushed, 1 gave up, 1 failed, 1 not fixed, 2 skipped"],
   ]);
 });
+
+test("a posted review says which PR, what kind and how many notes; a failed one says why", () => {
+  const { a } = activity();
+  a.record("review-post", { key: "o/r#1", event: "approve", comments: 3, inBody: 1 });
+  a.record("review-post", { key: "o/r#2", event: "request_changes", comments: 1, inBody: 0 });
+  a.record("review-post", { key: "o/r#3", event: "comment", comments: 0, inBody: 0 });
+  a.record("review-post-failed", { key: "o/r#4", error: "HTTP 422 from GitHub" });
+  assert.deepEqual(a.lines().map((l) => [l.level, l.text]), [
+    ["info", "Posted a review on o/r#1: approve, 3 comments on lines, 1 in the overall comment"],
+    ["info", "Posted a review on o/r#2: request changes, 1 comment on a line"],
+    ["info", "Posted a review on o/r#3: comment"],
+    ["error", "Could not post the review on o/r#4: HTTP 422 from GitHub"],
+  ]);
+});

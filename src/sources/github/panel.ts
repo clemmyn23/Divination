@@ -1,9 +1,12 @@
+import { hhmm } from "../../core/time.ts";
 import type { Panel, View } from "../../core/types.ts";
+import { hashOf } from "../../enrich/cache.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
 import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import { ciMark, sizeText } from "./marks.ts";
 import { myPrsPanel } from "./mine.panel.ts";
+import { postedKey } from "./review/post.ts";
 import type { Bucket, GithubData, PullRequest } from "./types.ts";
 
 /** The lozenge on a PR raised by a member of the review crew: such a PR may bypass the crew's review. */
@@ -66,6 +69,54 @@ ${findings}
 </details>`;
 }
 
+const KINDS: [string, string][] = [
+  ["COMMENT", "Comment"],
+  ["APPROVE", "Approve"],
+  ["REQUEST_CHANGES", "Request changes"],
+];
+
+/** One tickable entry of the dialog: a checkbox, where it goes, and its text to edit. */
+function entry(pick: string, where: string, text: string, label: string, copy: boolean): string {
+  return `<div class="finding">
+<label class="pick"><input type="checkbox" autocomplete="off" data-pick="${esc(pick)}"> <span class="where">${esc(where)}</span></label>
+<textarea data-text autocomplete="off" rows="${copy ? 4 : 3}" aria-label="${esc(label)}">${esc(text)}</textarea>${copy ? '\n<button type="button" data-copy-text>Copy</button>' : ""}
+</div>`;
+}
+
+/**
+ * A drafted review, opened up: every note with a checkbox and its text to edit, a box for
+ * my own message, the kind of review, and the button that posts what is ticked to the PR.
+ * Nothing is ticked to start, and Comment is the kind selected whatever the draft says:
+ * an approval or a change request only goes out when I pick it. `data-draft` is a
+ * fingerprint of the draft, so the page never puts one draft's ticks on another and the
+ * server never posts a note from a draft other than the one on screen. The boxes are
+ * `autocomplete="off"` so that the browser does not refill them after a reload either.
+ */
+function dialogHtml(pr: PullRequest, review: Review, posted: string): string {
+  const key = reviewKey(pr);
+  const count = review.findings.length;
+  const notes = review.findings.map((f, i) => entry(String(i), `${f.file}:${f.line} · ${f.severity}`, f.comment, `Note on ${f.file}:${f.line}`, true));
+  const kinds = KINDS.map(
+    ([value, label]) => `<label><input type="radio" autocomplete="off" name="event:${esc(key)}" value="${value}"${value === "COMMENT" ? " checked" : ""}> ${label}</label>`,
+  );
+  return `<dialog class="review-dialog" data-review="${esc(key)}" data-draft="${hashOf(review)}" aria-label="Review of ${esc(pr.title)}">
+<h2>${link(pr.title, pr.url)}</h2>
+<p class="meta">${esc(pr.key)} · ${esc(pr.author)} · Draft says: ${esc(review.verdict.replaceAll("_", " "))} · ${count} ${count === 1 ? "note" : "notes"}</p>
+<div class="review-notes">
+${[entry("summary", "Summary · goes in the overall comment", review.summary, "Summary", false), ...notes].join("\n")}
+</div>
+<div class="review-post">
+<textarea data-message autocomplete="off" rows="2" placeholder="Your message. It goes first." aria-label="Your message"></textarea>
+<div class="review-kind" role="radiogroup" aria-label="Kind of review">
+${kinds.join("\n")}
+</div>
+<button type="button" data-review-post disabled>Post</button>
+<button type="button" data-review-close>Close</button>
+</div>
+<p class="review-status" role="status">${esc(posted)}</p>
+</dialog>`;
+}
+
 function meta(pr: PullRequest): string {
   const why = pr.rank.reasons.filter((r) => !SHOWN_ELSEWHERE.includes(r)).join(", ");
   const parts = [
@@ -87,7 +138,13 @@ function item(pr: PullRequest, view: View): string {
     const review = asReview(view.enrich["pr-review"]?.[reviewKey(pr)]);
     const ask = `data-enrich="pr-review" data-key="${esc(reviewKey(pr))}"`;
     // A draft can be asked for again: a rerun replaces it, and a rerun that fails keeps it.
-    extra = review ? `\n${reviewHtml(review)}\n<button ${ask} data-again>Rerun review</button>` : `\n<button ${ask}>Draft review</button>`;
+    if (review) {
+      const at = view.done[postedKey(reviewKey(pr))];
+      const posted = at === undefined ? "" : `Posted ${hhmm(at, view.config.me.timezone)}`;
+      const open = `<button type="button" data-review-open="${esc(reviewKey(pr))}">Open review</button>`;
+      extra = `\n${reviewHtml(review)}\n${open}\n${dialogHtml(pr, review, posted)}\n<button ${ask} data-again>Rerun review</button>`;
+      if (posted) extra += `\n<p class="fix-note">${posted}</p>`;
+    } else extra = `\n<button ${ask}>Draft review</button>`;
   }
   const key = prDoneKey(pr);
   return `<li class="item pr${needsYou ? " needs-you" : ""}">${link(pr.title, pr.url)}

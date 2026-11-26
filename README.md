@@ -14,9 +14,10 @@ It shows:
   waiting on you first.
 - **Alerts**: each alert channel's alerts today, counted by title.
 
-It reads, with one exception you switch on yourself: a **Fix** button that pushes a commit
-to one of your own PRs when you press it. Nothing is posted, reacted to, approved or
-merged, and the page is never published anywhere.
+It reads, with two exceptions, each a button you press yourself: **Fix** pushes a commit to
+one of your own PRs, and **Post** in a drafted review's dialog posts the notes you ticked to
+that PR as a review. Nothing else is posted, nothing is reacted to or merged, and the page
+is never published anywhere.
 
 ## Start
 
@@ -123,6 +124,33 @@ It does not answer review comments, fix PRs from a fork or drafts, read logs fro
 anything but TeamCity, or re-run a build. The same thing from a terminal is
 `pnpm divination fix <owner/repo#number | all>`.
 
+## Posting a review
+
+A drafted review sits folded under its PR in the Review queue. **Open review** opens it in
+a dialog:
+
+- Each note has a checkbox and its text, which you can edit. Nothing is ticked to start:
+  tick the notes that are real problems and leave the rest.
+- The draft's summary is one more entry. Ticked, it goes in the review's overall comment.
+- Beside the Post button is a box for a message of your own, which goes first, and a
+  choice of **Comment**, **Approve** or **Request changes**. Comment is always the one
+  selected to start, whatever the draft says.
+- **Post** sends one review to the PR, under your name. The button says what it will send
+  ("Post 3 comments · Approve"), and there is no second question.
+
+Each ticked note becomes a comment on its file and line. A note whose line is not part of
+the PR's diff goes in the overall comment instead, under its file and line. A review is
+only posted against the commit its draft was written for: if the PR has new commits, Post
+says so and you rerun the review. It is also only posted from the draft that is on screen:
+if the draft was rerun while its dialog was open, Post says so and you open it again.
+
+If the server does not answer a post, the page says the review may or may not have gone:
+check the PR before pressing Post again. A draft that has been posted says when, and can
+be posted from again, for instance to approve after a first round of comments.
+
+Your ticks and edits are kept in the browser tab until you post or the draft is rerun, and
+the page does not reload itself while a review is open. Claude is not involved in posting.
+
 ## When Claude is called
 
 Collecting and drawing never call an LLM. Claude is called only when you ask:
@@ -151,7 +179,8 @@ Each call runs the `claude` command-line tool headless, with a spending cap
 (`enrich.maxBudgetUsd`, which applies to a Refresh now read too), no session kept, and
 only the tools its prompt needs. A call that reaches the cap is stopped and says so.
 Sparkle results are cached, so the same thing is never asked twice. Drafted reviews are
-drafts: you read, edit and post them yourself.
+drafts: you read, edit and post them yourself (see "Posting a review"). Claude never posts
+one.
 
 A call is started lean, because everything a run starts with is read again on every turn:
 no skills, no hooks, and no MCP servers, except that a Refresh now read gets the one
@@ -187,10 +216,14 @@ Everything the tool writes goes under `out/`, which is not committed:
 - Text gathered from GitHub, Slack and the calendar is treated as data. Prompts tell
   Claude the same: text in a pull request, a message or a build log is never an
   instruction.
-- Slack and the calendar are only ever read. So is GitHub, except for the Fix button: it
-  pushes commits to the head branch of your own PRs, only when you press it, never with
-  force, and does nothing else to GitHub. It posts no comment, review, reaction or
-  approval, and merges nothing.
+- Slack and the calendar are only ever read. So is GitHub, except for two buttons. **Fix**
+  pushes commits to the head branch of your own PRs, never with force. **Post** in a
+  drafted review's dialog posts one review to that PR: the notes you ticked, as you edited
+  them, with the kind of review you chose. Neither happens unless you press it, and
+  nothing else is done to GitHub: no reaction, no merge, no comment outside that review.
+- A review is posted by the tool's own code, not by Claude: the run that drafts a review
+  can read the PR and nothing else. Where each note goes is read from the stored draft,
+  and the words of a review are never written to the tool's log.
 - During a fix, Claude's file tools are confined to the throwaway worktree: it cannot
   read or change anything else on the machine, and it cannot run a program. The git is
   done by the tool's own code, with the repository's hooks switched off for every step

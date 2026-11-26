@@ -101,7 +101,9 @@ slack:
   # Set this to make Slack links open the Slack app.
   teamId: ""
   userId: ""
+  # How far back Slack is read: three days, and five on a Monday to cover the weekend.
   windowHours: 72
+  mondayWindowHours: 120
   # Posts by these authors are left out.
   muteAuthors: []
   groups: []

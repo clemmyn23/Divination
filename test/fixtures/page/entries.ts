@@ -166,6 +166,18 @@ export function fixtureEnrich(): Record<string, Record<string, unknown>> {
             severity: "should-fix",
             comment: "`roundHalfUp` here still comes from the old helper, so totals can differ by a cent from the tax service. Use `tax.round()` instead.",
           },
+          {
+            file: "src/billing/totals.ts",
+            line: "102-110",
+            severity: "blocker",
+            comment: "A refund larger than the invoice total goes negative here and is sent to the ledger as a charge.\n\nClamp it at zero, or reject the refund before this point.",
+          },
+          {
+            file: "src/billing/format.ts",
+            line: "14",
+            severity: "nit",
+            comment: "`fmt` could say what it formats: `formatTotal`.",
+          },
         ],
       },
     },

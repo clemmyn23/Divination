@@ -113,6 +113,18 @@ test("a quiet day says so", () => {
   assert.equal(html, '<p class="quiet">Nothing new in Slack today.</p>');
 });
 
+test("when every thread is ticked off the panel says so, above the folded ones", () => {
+  const one: SlackData = { ...DATA, threads: [thread("C1", "300.000100", { latestTs: today(60) })] };
+  const done = { ...view, done: { [`slack:C1:300.000100@${today(60)}`]: NOW } };
+  const html = slackPanels(one, done).find((p) => p.id === "slack")!.html;
+  assert.ok(html.startsWith('<p class="quiet">Nothing left in Slack today.</p>\n<details class="stale done">'));
+
+  // While something is still open, the line is not there.
+  assert.ok(!slackPanels(one, view).find((p) => p.id === "slack")!.html.includes('class="quiet"'));
+  const two: SlackData = { ...DATA, threads: [...one.threads, thread("C1", "400.000100", { latestTs: today(120) })] };
+  assert.ok(!slackPanels(two, done).find((p) => p.id === "slack")!.html.includes('class="quiet"'));
+});
+
 test("alerts panel shows counts and quiet channels", () => {
   const html = slackPanels(DATA, view).find((p) => p.id === "alerts")!.html;
   assert.ok(html.includes("×3"));
