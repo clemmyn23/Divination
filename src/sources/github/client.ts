@@ -19,7 +19,13 @@ export interface PullDetail {
   additions: number;
   deletions: number;
   changed_files: number;
-  head: { sha: string };
+  /** "open" or "closed". */
+  state?: string;
+  draft?: boolean;
+  user?: { login: string };
+  /** `repo` is null when the PR came from a fork that has since been deleted. */
+  head: { sha: string; ref?: string; repo?: { full_name: string } | null };
+  base?: { ref: string; repo?: { full_name: string } };
   /** False when it conflicts with its base; null until GitHub has worked it out. */
   mergeable?: boolean | null;
   /** "blocked" when something required is missing: an approval, a required check. */

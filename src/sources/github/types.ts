@@ -175,9 +175,13 @@ export interface Facts {
 export interface CheckRun {
   status: string;
   conclusion: string | null;
+  name?: string;
+  details_url?: string;
 }
 
 export interface CombinedStatus {
   state: string;
   total_count: number;
+  /** Each status behind the combined state. A CI server's build is linked from `target_url`. */
+  statuses?: { state: string; context: string; target_url?: string | null }[];
 }
