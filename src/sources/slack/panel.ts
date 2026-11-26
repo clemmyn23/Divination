@@ -46,6 +46,8 @@ function slackPanel(data: SlackData, view: View): string {
   // Groups in the order their conversations are listed, which is config order with "Posted in" last.
   const groups = [...new Set(data.conversations.filter((c) => c.kind !== "alerts").map((c) => c.group))];
   const parts: string[] = [];
+  // Everything is ticked off: say so, or the panel is a folded "Done" and nothing else.
+  if (shown.length === 0) parts.push('<p class="quiet">Nothing left in Slack today.</p>');
 
   const min = view.config.slack.summary.minMessages;
   const summaries = view.enrich["slack-summary"] ?? {};
