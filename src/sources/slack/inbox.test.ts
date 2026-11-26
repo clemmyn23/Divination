@@ -32,6 +32,12 @@ test("the plan tells the reader exactly what to read, so it does no date sums an
   });
 });
 
+test("on a Monday the plan reaches back five days, so the weekend does not use up the window", () => {
+  const monday = Date.parse("2026-11-22T23:00:00Z"); // Monday 23 November, 10:00 in Sydney
+  const plan = sweepPlan(contextWith({ ...SLACK_LOCAL, slack: { ...SLACK_LOCAL.slack, transport: "inbox" } }, { now: () => monday }));
+  assert.equal(plan.windowOldest, String(monday / 1000 - 120 * 3600));
+});
+
 test("swept threads become Slack data, with the conversations taken from config", () => {
   const data = fromInbox(swept([{ id: "C1", threads: [thread(today(60), { authors: ["Sam", "Ana"], messageCount: 3, excerpt: "Is the build broken?", summary: "Ana fixed the build." })] }]), ctx());
   assert.deepEqual(

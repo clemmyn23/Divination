@@ -6,6 +6,7 @@ import { dynamicConversations } from "./dynamic.ts";
 import { needsYou } from "./needs-you.ts";
 import { conversationsFromConfig, isMuted, toThread } from "./normalise.ts";
 import type { SlackConversation, SlackData, SlackMessage, SlackThread } from "./types.ts";
+import { windowStart } from "./window.ts";
 
 const AT_ONCE = 4;
 
@@ -66,17 +67,17 @@ function dmThread(conversation: SlackConversation, messages: SlackMessage[], me:
 }
 
 /**
- * Read every configured conversation over the last `slack.windowHours`, plus the channels
+ * Read every configured conversation over the Slack window (see `windowStart`), plus the channels
  * I posted in lately, and turn them into threads, each checked for whether it is waiting
  * on me. Alert conversations produce no threads; today's alerts are counted by title.
  */
 export async function collectSlack(ctx: Context): Promise<SlackData> {
   const slack = createSlack(ctx);
-  const { windowHours, workspaceUrl, userId, dynamic, muteAuthors, alerts: patterns } = ctx.config.slack;
+  const { workspaceUrl, userId, dynamic, muteAuthors, alerts: patterns } = ctx.config.slack;
   const tz = ctx.config.me.timezone;
   const now = ctx.now();
   const configured = conversationsFromConfig(ctx.config);
-  const oldest = String((now - windowHours * 3_600_000) / 1000);
+  const oldest = String(windowStart(ctx) / 1000);
 
   // Channels I posted in lately. Search needs its own scope; without it, carry on without them.
   let posted: SlackConversation[] = [];

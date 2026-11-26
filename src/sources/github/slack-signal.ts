@@ -3,6 +3,7 @@ import type { Context } from "../../core/types.ts";
 import { createSlack } from "../slack/client.ts";
 import { permalink } from "../slack/normalise.ts";
 import type { SlackMessage } from "../slack/types.ts";
+import { windowStart } from "../slack/window.ts";
 import type { Signal } from "./types.ts";
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -100,7 +101,7 @@ export async function reviewPosts(ctx: Context): Promise<ReviewPosts> {
     if (!(await ctx.secrets.get("slack"))) return none;
 
     const slack = createSlack(ctx);
-    const oldest = String((ctx.now() - ctx.config.slack.windowHours * 3_600_000) / 1000);
+    const oldest = String(windowStart(ctx) / 1000);
     const posts = await slack.history(channelId, oldest);
     const names: Record<string, string> = {};
     for (const post of posts) {
