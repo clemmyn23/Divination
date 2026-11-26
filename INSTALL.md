@@ -53,7 +53,7 @@ Start with these in `config/local.yaml`:
 | `github.host` | Your GitHub host, such as `github.example.com` |
 
 Leave a source out of `sources` and it needs no setup. Later you are most likely to
-change `tick`, `claudeReads`, `github.crew`, `github.mine.ignoreCommenters`,
+change `tick`, `claudeReads`, `github.crew`, `github.fix`, `github.mine.ignoreCommenters`,
 `github.rank.riskPaths`, `slack.groups`, `slack.muteAuthors` and `hideOlderThanDays`.
 
 ## 4. Give each source access
@@ -70,7 +70,7 @@ Sign the `gh` tool in to the host you put in `github.host`:
 gh auth login --hostname <your host>
 ```
 
-That is all it needs. Two optional settings:
+That is all it needs. Three optional settings:
 
 - **`github.crew`**: fill this in only if you are in a review crew: the crew's GitHub
   team, its members and its review channel. The rules it switches on are written down in
@@ -78,6 +78,23 @@ That is all it needs. Two optional settings:
   what is waiting on your review.
 - **`github.mine.ignoreCommenters`**: GitHub usernames whose comments on your own PRs do
   not count as waiting on your answer, such as a review bot that signs in as a person.
+- **`github.fix.clones`**: switches on the **Fix** button for your own PRs that are
+  failing CI or have merge conflicts. Name your local clone of each repository you want
+  it for:
+
+  ```yaml
+  github:
+    fix:
+      clones:
+        "acme/monolith": /Users/you/code/monolith
+  ```
+
+  A fix also needs the `teamcity` command-line tool signed in (`teamcity auth login`),
+  to read the failing builds' logs, and the `claude` tool signed in. `doctor` checks all
+  three once a clone is named. The README's
+  [Fixing your own PRs](README.md#fixing-your-own-prs) says what a fix does and does not
+  do. This is the one part of the tool that changes anything outside your machine: it
+  pushes commits to your own PRs' branches.
 
 ### Slack
 
