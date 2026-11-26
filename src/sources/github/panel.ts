@@ -2,7 +2,9 @@ import type { Panel, View } from "../../core/types.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
 import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
-import type { Bucket, Ci, GithubData, PullRequest } from "./types.ts";
+import { ciMark, sizeText } from "./marks.ts";
+import { myPrsPanel } from "./mine.panel.ts";
+import type { Bucket, GithubData, PullRequest } from "./types.ts";
 
 /** The lozenge on a PR raised by a member of the review crew: such a PR may bypass the crew's review. */
 export const CREW = "raised by crew member";
@@ -15,8 +17,6 @@ const GROUPS: { title: string; buckets: Bucket[] }[] = [
   { title: "Waiting on authors", buckets: ["blocked"] },
   { title: "Covered or low priority", buckets: ["skip", "excluded"] },
 ];
-
-const CI_TEXT: Record<Ci, string> = { pass: "CI ✓", fail: "CI ✗", pending: "CI …", none: "no CI" };
 
 // Already shown on the meta line by the CI mark and the request tag.
 const SHOWN_ELSEWHERE = ["rotation", "CI passing", "CI failing"];
@@ -67,16 +67,12 @@ ${findings}
 }
 
 function meta(pr: PullRequest): string {
-  // Counts and the CI word are checked, not trusted: the data may have come from a dropped file.
-  const count = (n: unknown) => (typeof n === "number" && Number.isFinite(n) ? n : 0).toLocaleString("en-US");
-  const ci: Ci = Object.hasOwn(CI_TEXT, pr.ci) ? pr.ci : "none";
-  const size = `+${count(pr.additions)} −${count(pr.deletions)}`;
   const why = pr.rank.reasons.filter((r) => !SHOWN_ELSEWHERE.includes(r)).join(", ");
   const parts = [
     esc(pr.key),
     esc(pr.author),
-    size,
-    `<span class="ci-${ci}">${CI_TEXT[ci]}</span>`,
+    sizeText(pr.additions, pr.deletions),
+    ciMark(pr.ci),
     `<span class="tag">${esc(pr.request)}</span>`,
     ...(pr.byCrew ? [`<span class="tag crew">${CREW}</span>`] : []),
     ...(why ? [esc(why)] : []),
@@ -101,7 +97,7 @@ ${meta(pr)}${extra}${tick(key, isDone(key, view))}</li>`;
 /**
  * The review queue: PRs grouped by what to do with them, one title and one meta line each.
  * PRs opened longer ago than `hideOlderThanDays` are folded into one accordion at the end,
- * and PRs ticked off by hand into another.
+ * and PRs ticked off by hand into another. My own PRs follow in a panel of their own.
  */
 export function githubPanels(data: GithubData, view: View): Panel[] {
   const done = data.prs.filter((pr) => isDone(prDoneKey(pr), view));
@@ -127,5 +123,5 @@ ${prs.map((pr) => item(pr, view)).join("\n")}
   }
 
   const html = groups.length > 0 ? groups.join("\n") : '<p class="quiet">No reviews waiting.</p>';
-  return [{ id: "prs", title: "Review queue", tint: "blush", html }];
+  return [{ id: "prs", title: "Review queue", tint: "blush", html }, myPrsPanel(data, view)];
 }

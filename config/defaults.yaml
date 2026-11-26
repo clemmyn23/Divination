@@ -48,6 +48,11 @@ github:
   crewMembers: []
   review:
     model: opus
+  # Your own PRs. A comment from someone else since you last pushed or replied counts as
+  # waiting on your answer, unless it is from an app's bot account or from one of these
+  # GitHub usernames (a review bot that signs in as a person, say).
+  mine:
+    ignoreCommenters: []
   rank:
     # A changed path matching `pattern` adds `weight` to a pull request's rank.
     riskPaths:

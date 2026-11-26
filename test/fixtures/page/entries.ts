@@ -7,7 +7,7 @@ import { dayClass, headline } from "../../../src/sources/calendar/day.ts";
 import { calendar } from "../../../src/sources/calendar/index.ts";
 import type { CalEvent, CalendarData } from "../../../src/sources/calendar/types.ts";
 import { github } from "../../../src/sources/github/index.ts";
-import type { Bucket, Ci, GithubData, PullRequest, Request } from "../../../src/sources/github/types.ts";
+import type { Bucket, Ci, GithubData, MyPull, PullRequest, Request, ReviewState, Waits } from "../../../src/sources/github/types.ts";
 import { slack } from "../../../src/sources/slack/index.ts";
 import type { AlertCount, SlackData, SlackThread } from "../../../src/sources/slack/types.ts";
 
@@ -70,8 +70,48 @@ function pr(
   };
 }
 
+// My own PRs, in the same panel family.
+function mine(
+  number: number,
+  title: string,
+  size: [number, number],
+  ci: Ci,
+  review: ReviewState,
+  on: Waits["on"],
+  reasons: string[],
+  quietDays = 1,
+): MyPull {
+  return {
+    key: `o/app#${number}`,
+    repo: "o/app",
+    number,
+    title,
+    url: `https://git.example.com/o/app/pull/${number}`,
+    headSha: `sha${number}`,
+    createdAt: -(quietDays + 2) * 86_400_000, // both shifted to "now" by queueAt()
+    updatedAt: -quietDays * 86_400_000,
+    draft: on === "draft",
+    additions: size[0],
+    deletions: size[1],
+    ci,
+    review,
+    conflicts: reasons.includes("merge conflicts"),
+    unanswered: reasons.some((r) => r.endsWith("to answer")) ? 2 : 0,
+    waits: { on, reasons },
+  };
+}
+
 const queue: GithubData = {
   login: "sam",
+  mine: [
+    mine(425, "Remember the last audience filter", [130, 22], "pass", "approved", "me", ["ready to merge"], 0),
+    mine(417, "Make the send-time picker keyboard friendly", [240, 60], "fail", "none", "me", ["CI failing", "2 comments to answer"]),
+    mine(411, "Tidy the template gallery's empty state", [85, 30], "pass", "changes_requested", "me", ["changes requested", "merge conflicts"], 2),
+    mine(424, "Cache the segment counts", [310, 44], "pending", "none", "others", ["CI running", "waiting on review"], 0),
+    mine(414, "Drop the legacy colour picker", [20, 640], "pass", "changes_requested", "others", ["waiting on a second look"], 3),
+    mine(422, "Try a new layout for the report page", [520, 80], "fail", "none", "draft", [], 1),
+    mine(350, "Move the footer links into config", [44, 12], "pass", "none", "me", ["1 comment to answer"], 80),
+  ],
   prs: [
     pr(412, "Move invoice totals to the new tax service", "ana", [640, 210], "pass", "rotation", "review_now", ["touches billing", "large change", "rotation", "4 days old", "CI passing"], 9),
     { ...pr(418, "Add keyboard support to the date picker", "kit", [180, 35], "pending", "rotation", "review_now", ["rotation"], 0), byCrew: true },
@@ -92,7 +132,11 @@ const queue: GithubData = {
 
 /** The sample queue with its dates set relative to `now`. */
 function queueAt(now: number): GithubData {
-  return { ...queue, prs: queue.prs.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now })) };
+  return {
+    ...queue,
+    prs: queue.prs.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now })),
+    mine: queue.mine!.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now + p.updatedAt })),
+  };
 }
 
 /** Enrichment already in the cache for the sample page: one drafted review. */

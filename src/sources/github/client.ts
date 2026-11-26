@@ -20,12 +20,29 @@ export interface PullDetail {
   deletions: number;
   changed_files: number;
   head: { sha: string };
+  /** False when it conflicts with its base; null until GitHub has worked it out. */
+  mergeable?: boolean | null;
+  /** "blocked" when something required is missing: an approval, a required check. */
+  mergeable_state?: string;
+}
+
+/** "Bot" for an app's account; a person, or a machine user signed up as one, is "User". */
+interface Account {
+  login: string;
+  type?: string;
 }
 
 export interface Review {
-  user?: { login: string };
+  user?: Account;
   commit_id?: string;
   state: string;
+  /** Missing on a review that has not been submitted yet. */
+  submitted_at?: string;
+}
+
+export interface IssueComment {
+  user?: Account;
+  created_at: string;
 }
 
 /** The URL marked `rel="next"` in a Link header, if any. */
@@ -77,6 +94,26 @@ export function createGithub(ctx: Context) {
     return all.slice(0, limit);
   }
 
+  /** Open PRs matching the search, as the API orders them. */
+  async function search(query: string): Promise<QueueHit[]> {
+    const q = encodeURIComponent(`is:open is:pr ${query} archived:false`);
+    const { data } = await get<{ items: SearchItem[] }>(`/search/issues?q=${q}&per_page=${QUEUE_LIMIT}`);
+    return data.items.map((item) => {
+      const repo = item.repository_url.split("/").slice(-2).join("/");
+      return {
+        key: `${repo}#${item.number}`,
+        repo,
+        number: item.number,
+        title: item.title,
+        url: item.html_url,
+        author: item.user?.login ?? "unknown",
+        draft: item.draft === true,
+        createdAt: Date.parse(item.created_at),
+        updatedAt: Date.parse(item.updated_at),
+      };
+    });
+  }
+
   return {
     host,
 
@@ -84,25 +121,11 @@ export function createGithub(ctx: Context) {
       return (await get<{ login: string }>("/user")).data.login;
     },
 
-    /** Open PRs where a review is requested from `login`, newest activity first as the API returns them. */
-    async queue(login: string): Promise<QueueHit[]> {
-      const q = encodeURIComponent(`is:open is:pr review-requested:${login} archived:false`);
-      const { data } = await get<{ items: SearchItem[] }>(`/search/issues?q=${q}&per_page=${QUEUE_LIMIT}`);
-      return data.items.map((item) => {
-        const repo = item.repository_url.split("/").slice(-2).join("/");
-        return {
-          key: `${repo}#${item.number}`,
-          repo,
-          number: item.number,
-          title: item.title,
-          url: item.html_url,
-          author: item.user?.login ?? "unknown",
-          draft: item.draft === true,
-          createdAt: Date.parse(item.created_at),
-          updatedAt: Date.parse(item.updated_at),
-        };
-      });
-    },
+    /** Open PRs where a review is requested from `login`. */
+    queue: (login: string) => search(`review-requested:${login}`),
+
+    /** Open PRs that `login` raised. */
+    mine: (login: string) => search(`author:${login}`),
 
     async pull(repo: string, number: number): Promise<PullDetail> {
       return (await get<PullDetail>(`/repos/${repo}/pulls/${number}`)).data;
@@ -137,6 +160,17 @@ export function createGithub(ctx: Context) {
 
     async reviews(repo: string, number: number): Promise<Review[]> {
       return paged<Review>(`/repos/${repo}/pulls/${number}/reviews?per_page=100`, 500);
+    },
+
+    /** The comments on the PR's conversation. Comments on lines of code arrive as reviews instead. */
+    async comments(repo: string, number: number): Promise<IssueComment[]> {
+      return paged<IssueComment>(`/repos/${repo}/issues/${number}/comments?per_page=100`, 500);
+    },
+
+    /** When the commit was made. A rebase or an amend moves it, so for a head commit it stands for the last push. */
+    async committedAt(repo: string, sha: string): Promise<number> {
+      const { data } = await get<{ commit: { committer?: { date?: string } } }>(`/repos/${repo}/commits/${sha}`);
+      return Date.parse(data.commit.committer?.date ?? "") || 0;
     },
   };
 }

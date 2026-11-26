@@ -51,9 +51,9 @@ test("panel groups PRs and shows review drafts with copy buttons", () => {
   assert.ok(githubPanels(DATA, view)[0]!.html.includes('<button data-enrich="pr-review" data-key="o/r#1@aaa111">Draft review</button>'));
 });
 
-test("the panel is one blush panel called the review queue", () => {
-  const panels = githubPanels(DATA, view);
-  assert.deepEqual(panels.map((p) => [p.id, p.title, p.tint, p.size]), [["prs", "Review queue", "blush", undefined]]);
+test("the first panel is a blush one called the review queue", () => {
+  const [queue] = githubPanels(DATA, view);
+  assert.deepEqual([queue!.id, queue!.title, queue!.tint, queue!.size], ["prs", "Review queue", "blush", undefined]);
 });
 
 test("each PR is a title and one meta line", () => {
@@ -184,7 +184,7 @@ test("PRs that need you become needs-you items with their reasons", () => {
       doneKey: "pr:o/r#2@sha2",
     },
   ]);
-  assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs"]);
+  assert.deepEqual(github.panels(DATA, view).map((p) => p.id), ["prs", "my-prs"]);
 });
 
 test("a PR raised by a crew member carries a lozenge on its meta line, and says so where it needs me", () => {

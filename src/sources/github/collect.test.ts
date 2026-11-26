@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BASE, HOST, PR1, PR2, githubRoutes } from "../../../test/fixtures/github/api.ts";
+import { BASE, HOST, MINE1, MINE2, PR1, PR2, githubRoutes } from "../../../test/fixtures/github/api.ts";
 import { contextWith, fakeExec, fakeHttp } from "../../../test/helpers.ts";
 import { ciState, collectGithub } from "./collect.ts";
 import { github } from "./index.ts";
@@ -212,4 +212,88 @@ test("a PR raised by a crew member is marked, whatever the case of the name; oth
 
   const others = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crewMembers: ["zed"] } }).ctx);
   assert.ok(others.prs.every((p) => !("byCrew" in p)));
+});
+
+test("my own open PRs are collected, each with what it is waiting on", async () => {
+  const { ctx, http } = setup(githubRoutes([PR1], "me", [MINE1, MINE2]));
+  const data = await collectGithub(ctx);
+  assert.ok(http.calls.some((u) => u.includes("author%3Ame")));
+  assert.deepEqual(
+    data.mine!.map((p) => [p.key, p.ci, p.review, p.conflicts, p.unanswered, p.waits]),
+    [
+      // newest activity first among the ones waiting on me
+      ["o/r#8", "fail", "none", true, 1, { on: "me", reasons: ["CI failing", "merge conflicts", "1 comment to answer"] }],
+      ["o/r#7", "pass", "approved", false, 0, { on: "me", reasons: ["ready to merge"] }],
+    ],
+  );
+  assert.deepEqual(data.prs.map((p) => p.key), ["o/r#1"]); // the review queue is not mixed in
+});
+
+test("one of my PRs carries what the search, the PR and its head commit say about it", async () => {
+  const { ctx } = setup(githubRoutes([], "me", [MINE1]));
+  assert.deepEqual((await collectGithub(ctx)).mine, [
+    {
+      key: "o/r#7",
+      repo: "o/r",
+      number: 7,
+      title: "PR number 7",
+      url: `https://${HOST}/o/r/pull/7`,
+      headSha: "mmm777",
+      createdAt: Date.parse("2026-11-20T01:00:00Z"),
+      updatedAt: Date.parse("2026-11-23T05:00:00Z"),
+      draft: false,
+      additions: 40,
+      deletions: 2,
+      ci: "pass",
+      review: "approved",
+      conflicts: false,
+      unanswered: 0,
+      waits: { on: "me", reasons: ["ready to merge"] },
+    },
+  ]);
+});
+
+test("with no open PRs of my own the list is empty", async () => {
+  assert.deepEqual((await collectGithub(setup().ctx)).mine, []);
+});
+
+test("an unchanged PR of mine reuses its reviews and comments but asks again for conflicts and CI", async () => {
+  const { ctx, http } = setup(githubRoutes([], "me", [MINE2]));
+  await collectGithub(ctx);
+  http.calls.length = 0;
+  const again = await collectGithub(ctx);
+  assert.equal(http.calls.filter((u) => /\/reviews|\/comments|\/commits\/mmm888$/.test(u)).length, 0);
+  assert.equal(http.calls.filter((u) => u.endsWith("/pulls/8")).length, 1);
+  assert.equal(http.calls.filter((u) => u.includes("/check-runs")).length, 1);
+  assert.equal(again.mine![0]!.unanswered, 1);
+});
+
+test("a new push to one of my PRs is noticed even when nothing else moved", async () => {
+  const first = setup(githubRoutes([], "me", [MINE2]));
+  await collectGithub(first.ctx);
+  // The push answers the question, and the new commit is green and merges cleanly.
+  const pushed = { ...MINE2, sha: "mmm999", pushedAt: "2026-11-24T03:00:00Z", mergeable: true, status: { state: "success", total_count: 1 } };
+  const data = await collectGithub({ ...first.ctx, http: fakeHttp(githubRoutes([], "me", [pushed])) });
+  assert.deepEqual(data.mine!.map((p) => [p.headSha, p.unanswered, p.waits]), [["mmm999", 0, { on: "others", reasons: ["waiting on review"] }]]);
+});
+
+test("comments from the people I have chosen to ignore do not wait on an answer", async () => {
+  const local = { github: { host: HOST, mine: { ignoreCommenters: ["ANN"] } } };
+  const { ctx } = setup(githubRoutes([], "me", [{ ...MINE2, mergeable: true, status: { state: "success", total_count: 1 } }]), local);
+  assert.deepEqual((await collectGithub(ctx)).mine!.map((p) => [p.unanswered, p.waits.on]), [[0, "others"]]);
+});
+
+test("requested changes wait on me until I push, then on the reviewer", async () => {
+  const asked = { user: { login: "ann", type: "User" }, state: "CHANGES_REQUESTED", submitted_at: "2026-11-23T03:00:00Z", commit_id: "mmm777", body: "Split this." };
+  const waiting = await collectGithub(setup(githubRoutes([], "me", [{ ...MINE1, reviews: [asked] }])).ctx);
+  assert.deepEqual(waiting.mine![0]!.waits, { on: "me", reasons: ["changes requested"] });
+
+  const pushed = await collectGithub(setup(githubRoutes([], "me", [{ ...MINE1, reviews: [asked], pushedAt: "2026-11-23T04:00:00Z" }])).ctx);
+  assert.deepEqual(pushed.mine![0]!.waits, { on: "others", reasons: ["waiting on a second look"] });
+});
+
+test("a draft of mine waits on nobody, and drafts come last", async () => {
+  const draft = { ...MINE2, item: { draft: true, updated_at: "2026-11-24T22:00:00Z" } };
+  const data = await collectGithub(setup(githubRoutes([], "me", [draft, MINE1])).ctx);
+  assert.deepEqual(data.mine!.map((p) => [p.key, p.draft, p.waits.on]), [["o/r#7", false, "me"], ["o/r#8", true, "draft"]]);
 });

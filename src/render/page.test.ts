@@ -229,6 +229,7 @@ test("theme defines tokens, dark mode and the phone breakpoint", () => {
     ".tint-blush",
     ".tint-mint",
     ".tint-lilac",
+    ".tint-sky",
     '[data-stale="true"]',
     "button[data-enrich]",
     "ui-rounded",

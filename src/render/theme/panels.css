@@ -51,6 +51,10 @@
   --tint: var(--lilac);
 }
 
+.tint-sky {
+  --tint: var(--sky);
+}
+
 .tint-accent {
   --tint: var(--accent);
 }

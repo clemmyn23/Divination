@@ -44,6 +44,8 @@ export interface Config {
     /** GitHub usernames of the review crew's members. A PR one of them raises may bypass the crew's review. */
     crewMembers: string[];
     review: { model: string };
+    /** My own PRs. Comments from these GitHub usernames are not counted as waiting on an answer. */
+    mine: { ignoreCommenters: string[] };
     rank: { riskPaths: RiskPath[]; docsPattern: string; quickWinMaxLines: number; largeLines: number };
     slackSignal: { channelId: string; skipReactions: string[] };
   };
@@ -111,7 +113,7 @@ export interface Secrets {
   get(name: string): Promise<string | undefined>;
 }
 
-export type Tint = "butter" | "blush" | "mint" | "lilac";
+export type Tint = "butter" | "blush" | "mint" | "lilac" | "sky";
 
 export interface Envelope<T> {
   source: string;

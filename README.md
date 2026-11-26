@@ -9,6 +9,7 @@ It shows:
 - **Today**: your meetings, the shape of the day as a line of hills, and a one-line headline.
 - **Review queue**: the pull requests waiting on your review, ranked, with the ones you
   can skip set aside.
+- **My PRs**: the pull requests you raised, the ones waiting on you first.
 - **Slack**: today's threads in the channels and direct messages you follow, the ones
   waiting on you first.
 - **Alerts**: each alert channel's alerts today, counted by title.
@@ -102,7 +103,7 @@ A source gets its data in one of two ways, set by `transport` in its config bloc
 fetched by the tool itself (`api`, `ics`), or read from a file that something else
 dropped in `out/inbox/` (`inbox`).
 
-### Review queue (GitHub)
+### Review queue and My PRs (GitHub)
 
 Uses the `gh` command-line tool's login for the host in `github.host`.
 
@@ -112,6 +113,18 @@ gh auth login --hostname <your host>
 
 Review rules it applies (rotation, crew members, signals from the review channel) are
 written down in [docs/review-rules.md](docs/review-rules.md).
+
+A PR you raised waits on you, and shows in Needs you, when any of these is true:
+
+- its CI is failing
+- it conflicts with its base branch
+- a reviewer asked for changes and you have not pushed or replied since
+- someone has commented since you last pushed or replied
+- it is approved, its CI is green and GitHub reports nothing else required, so it is ready to merge
+
+Otherwise it waits on others. A draft waits on nobody. "Pushed" is read from the time of
+the PR's newest commit. Comments from an app's bot account never count; a review bot that
+signs in as a person does, until you add its username to `github.mine.ignoreCommenters`.
 
 ### Slack
 
@@ -155,7 +168,8 @@ They are YAML, so comments are welcome. Settings merge key by key; a list in you
 replaces the whole default list.
 
 Settings you are most likely to change: `me`, `sources`, `tick`, `claudeReads`, `github.host`,
-`github.rotationTeam`, `github.crewMembers`, `github.rank.riskPaths`, `slack.groups`,
+`github.rotationTeam`, `github.crewMembers`, `github.mine.ignoreCommenters`,
+`github.rank.riskPaths`, `slack.groups`,
 `slack.muteAuthors`, `hideOlderThanDays`.
 
 ## Where things live

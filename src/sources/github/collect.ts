@@ -2,9 +2,10 @@ import { readJson, writeJson } from "../../core/store.ts";
 import type { Context } from "../../core/types.ts";
 import { classifyRequest } from "./classify.ts";
 import { type Github, createGithub } from "./client.ts";
+import { lastWord, reviewState, sortMine, unanswered, waitsOn } from "./mine.ts";
 import { rankPull, sortPulls } from "./rank.ts";
 import { findSignal, reviewPosts } from "./slack-signal.ts";
-import type { CheckRun, Ci, CombinedStatus, Facts, GithubData, PullRequest, QueueHit } from "./types.ts";
+import type { CheckRun, Ci, CombinedStatus, Facts, GithubData, MyFacts, MyPull, PullRequest, QueueHit } from "./types.ts";
 
 const AT_ONCE = 5;
 const FAILED_RUNS = ["failure", "timed_out", "cancelled"];
@@ -45,6 +46,87 @@ async function fetchFacts(gh: Github, hit: QueueHit, login: string): Promise<Fac
     requests,
     reviewedByMeAtHead: reviews.some((r) => r.user?.login === login && r.commit_id === pull.head.sha),
   };
+}
+
+async function fetchMyFacts(gh: Github, hit: QueueHit, headSha: string): Promise<MyFacts> {
+  const [reviews, comments, pushedAt] = await Promise.all([
+    gh.reviews(hit.repo, hit.number),
+    gh.comments(hit.repo, hit.number),
+    gh.committedAt(hit.repo, headSha),
+  ]);
+  // A review nobody has submitted yet has no time and is nobody's word.
+  const submitted = reviews.flatMap((r) => {
+    const at = Date.parse(r.submitted_at ?? "");
+    return Number.isFinite(at) ? [{ login: r.user?.login ?? "unknown", bot: r.user?.type === "Bot", state: r.state, at }] : [];
+  });
+  return {
+    updatedAt: hit.updatedAt,
+    headSha,
+    pushedAt,
+    verdicts: submitted.map(({ login, state, at }) => ({ login, state, at })),
+    said: [
+      ...comments.map((c) => ({ login: c.user?.login ?? "unknown", bot: c.user?.type === "Bot", at: Date.parse(c.created_at) })),
+      // A comment on a line of code, and a reply to one, each arrive as a review that only comments.
+      ...submitted.filter((r) => r.state === "COMMENTED").map(({ login, bot, at }) => ({ login, bot, at })),
+    ],
+  };
+}
+
+/**
+ * My own open PRs, each with what it is waiting on. What was said on a PR is cached and
+ * only fetched again when its `updated_at` or its head commit moves; whether it conflicts
+ * and its CI are asked for every time, because neither moves `updated_at`.
+ */
+async function collectMine(gh: Github, ctx: Context, login: string): Promise<MyPull[]> {
+  const hits = await gh.mine(login);
+  const ignore = ctx.config.github.mine.ignoreCommenters;
+
+  const cachePath = ctx.paths.cache("github", "mine.json");
+  const cached = readJson<Record<string, MyFacts>>(cachePath, {});
+  const kept: Record<string, MyFacts> = {};
+
+  const prs = await inBatches(hits, AT_ONCE, async (hit): Promise<MyPull> => {
+    const pull = await gh.pull(hit.repo, hit.number);
+    const headSha = pull.head.sha;
+    const known = cached[hit.key];
+    const fresh = known && known.updatedAt === hit.updatedAt && known.headSha === headSha;
+    const [facts, { runs, combined }] = await Promise.all([fresh ? known : fetchMyFacts(gh, hit, headSha), gh.ci(hit.repo, headSha)]);
+    kept[hit.key] = facts;
+
+    const ci = ciState(runs, combined);
+    const review = reviewState(facts.verdicts, login);
+    const conflicts = pull.mergeable === false;
+    const count = unanswered(facts.said, login, facts.pushedAt, ignore);
+    return {
+      key: hit.key,
+      repo: hit.repo,
+      number: hit.number,
+      title: hit.title,
+      url: hit.url,
+      headSha,
+      createdAt: hit.createdAt,
+      updatedAt: hit.updatedAt,
+      draft: hit.draft,
+      additions: pull.additions,
+      deletions: pull.deletions,
+      ci,
+      review: review.state,
+      conflicts,
+      unanswered: count,
+      waits: waitsOn({
+        draft: hit.draft,
+        ci,
+        review: review.state,
+        reviewAnswered: lastWord(facts.said, login, facts.pushedAt) > review.at,
+        conflicts,
+        blocked: pull.mergeable_state === "blocked",
+        unanswered: count,
+      }),
+    };
+  });
+
+  writeJson(cachePath, kept);
+  return sortMine(prs);
 }
 
 /**
@@ -98,5 +180,5 @@ export async function collectGithub(ctx: Context): Promise<GithubData> {
   });
 
   writeJson(cachePath, kept);
-  return { login, prs: sortPulls(prs) };
+  return { login, prs: sortPulls(prs), mine: await collectMine(gh, ctx, login) };
 }
