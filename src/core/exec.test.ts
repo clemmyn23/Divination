@@ -57,3 +57,12 @@ test("output can be watched as it arrives, and is still returned whole at the en
   assert.deepEqual(seen, ["one\n", "two\n"]);
   assert.equal(finishedAtFirstChunk, false);
 });
+
+test("a program runs in the folder it is given", async () => {
+  const { mkdtempSync, realpathSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const dir = realpathSync(mkdtempSync(join(tmpdir(), "divination-cwd-")));
+  const res = await realExec(node, ["-e", "process.stdout.write(process.cwd())"], { cwd: dir });
+  assert.equal(realpathSync(res.stdout), dir);
+});

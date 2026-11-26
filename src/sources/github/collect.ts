@@ -2,6 +2,7 @@ import { readJson, writeJson } from "../../core/store.ts";
 import type { Context } from "../../core/types.ts";
 import { classifyRequest } from "./classify.ts";
 import { type Github, createGithub } from "./client.ts";
+import { fixState, ownerSha, readAttempts } from "./fix/attempts.ts";
 import { lastWord, reviewState, sortMine, unanswered, waitsOn } from "./mine.ts";
 import { rankPull, sortPulls } from "./rank.ts";
 import { findSignal, reviewPosts } from "./slack-signal.ts";
@@ -48,11 +49,12 @@ async function fetchFacts(gh: Github, hit: QueueHit, login: string): Promise<Fac
   };
 }
 
-async function fetchMyFacts(gh: Github, hit: QueueHit, headSha: string): Promise<MyFacts> {
+/** `mySha` is my own newest commit on the PR: the head, unless the head is a commit a fix pushed. */
+async function fetchMyFacts(gh: Github, hit: QueueHit, headSha: string, mySha: string): Promise<MyFacts> {
   const [reviews, comments, pushedAt] = await Promise.all([
     gh.reviews(hit.repo, hit.number),
     gh.comments(hit.repo, hit.number),
-    gh.committedAt(hit.repo, headSha),
+    gh.committedAt(hit.repo, mySha),
   ]);
   // A review nobody has submitted yet has no time and is nobody's word.
   const submitted = reviews.flatMap((r) => {
@@ -76,10 +78,15 @@ async function fetchMyFacts(gh: Github, hit: QueueHit, headSha: string): Promise
  * My own open PRs, each with what it is waiting on. What was said on a PR is cached and
  * only fetched again when its `updated_at` or its head commit moves; whether it conflicts
  * and its CI are asked for every time, because neither moves `updated_at`.
+ *
+ * Each PR also carries where it stands with the Fix button. A commit pushed by a fix is
+ * not my answer to anything, so "when I last pushed" is taken from the commit the fixes
+ * started from, which the attempts record knows.
  */
 async function collectMine(gh: Github, ctx: Context, login: string): Promise<MyPull[]> {
   const hits = await gh.mine(login);
   const ignore = ctx.config.github.mine.ignoreCommenters;
+  const attempts = readAttempts(ctx);
 
   const cachePath = ctx.paths.cache("github", "mine.json");
   const cached = readJson<Record<string, MyFacts>>(cachePath, {});
@@ -90,7 +97,11 @@ async function collectMine(gh: Github, ctx: Context, login: string): Promise<MyP
     const headSha = pull.head.sha;
     const known = cached[hit.key];
     const fresh = known && known.updatedAt === hit.updatedAt && known.headSha === headSha;
-    const [facts, { runs, combined }] = await Promise.all([fresh ? known : fetchMyFacts(gh, hit, headSha), gh.ci(hit.repo, headSha)]);
+    const tries = attempts[hit.key] ?? [];
+    const [facts, { runs, combined }] = await Promise.all([
+      fresh ? known : fetchMyFacts(gh, hit, headSha, ownerSha(tries, headSha)),
+      gh.ci(hit.repo, headSha),
+    ]);
     kept[hit.key] = facts;
 
     const ci = ciState(runs, combined);
@@ -122,6 +133,7 @@ async function collectMine(gh: Github, ctx: Context, login: string): Promise<MyP
         blocked: pull.mergeable_state === "blocked",
         unanswered: count,
       }),
+      fix: fixState({ key: hit.key, repo: hit.repo, draft: hit.draft, ci, conflicts, headSha }, ctx.config.github.fix, tries),
     };
   });
 

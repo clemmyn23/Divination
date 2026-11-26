@@ -24,6 +24,7 @@ class FakeElement {
     if (selector === "button[data-copy]" && "copy" in this.dataset) return this;
     if (selector === "button[data-enrich]" && "enrich" in this.dataset) return this;
     if (selector === "button[data-done]" && "done" in this.dataset) return this;
+    if (selector === "button[data-fix]" && "fix" in this.dataset) return this;
     if (selector === ".panel" && this.panelId) return { id: this.panelId } as unknown as FakeElement;
     return null;
   }
@@ -61,6 +62,7 @@ interface Status {
   sources?: { id: string; title: string; state: string; at: number; ms?: number; error?: string; byHand?: boolean; asking?: boolean }[];
   job: { name: string; startedAt: number } | null;
   lastJob: { name: string; ok: boolean; error?: string; finishedAt: number } | null;
+  fix?: { key: string; index: number; total: number; stopping: boolean } | null;
 }
 
 const LIVE: Status = { live: true, nextTickAt: Date.parse("2026-11-25T03:15:00Z"), renderedAt: 100, startedAt: 50, job: null, lastJob: null };
@@ -97,6 +99,11 @@ function page(stored: string | null, opts: Options = {}) {
   const draft = new FakeElement("draft-1", "Draft review");
   draft.dataset.enrich = "pr-review";
   draft.dataset.key = "o/r#1@aaa111";
+
+  const fix = new FakeElement("fix-8", "Fix");
+  fix.dataset.fix = "o/r#8";
+  const fixAll = new FakeElement("fix-all", "Fix all");
+  fixAll.dataset.fix = "all";
 
   const tick = new FakeElement("tick-1", "✓");
   tick.dataset.done = "pr:o/r#1@aaa111";
@@ -176,6 +183,7 @@ function page(stored: string | null, opts: Options = {}) {
         if (!parsed) return [];
         if (selector === "button[data-enrich]") return [draft];
         if (selector === "button[data-done]") return [tick];
+        if (selector === "button[data-fix]") return [fixAll, fix];
         if (selector === ".panel-body") return [body];
         if (selector === "details.stale") return [fold];
         return [];
@@ -192,6 +200,8 @@ function page(stored: string | null, opts: Options = {}) {
     store,
     server,
     draft,
+    fix,
+    fixAll,
     tick,
     body,
     fold,
@@ -395,6 +405,16 @@ test("a sparkle button asks the server for exactly that item and shows it is wor
   ]);
   assert.equal(p.draft.textContent, "Asking Claude…");
   assert.equal(p.draft.disabled, true);
+});
+
+test("a rerun button asks for the same item again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.draft.textContent = "Rerun review";
+  p.draft.dataset.again = "";
+  await p.click(p.draft);
+  assert.deepEqual(p.posts()[0]!.body, { enricher: "pr-review", key: "o/r#1@aaa111", again: true });
+  assert.equal(p.draft.textContent, "Asking Claude…");
 });
 
 test("nothing asks for enrichment unless a sparkle button is pressed", async () => {
@@ -655,4 +675,80 @@ test("while Claude is reading a source, the status and the breakdown say it is C
   await p.finishParsing();
   assert.equal(p.liveStatus.textContent, "asking Claude… Slack");
   assert.match(p.pop.textContent.split("\n")[1]!, /^… Slack +Claude is reading…$/);
+});
+
+// Fixing a PR
+
+const FIXING_ALL: Status = { ...LIVE, job: { name: "fix:all", startedAt: 1 }, fix: { key: "o/r#8", index: 2, total: 14, stopping: false } };
+
+test("a Fix button asks the server to fix exactly that PR and shows it is working", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.fix);
+  assert.deepEqual(p.posts(), [
+    { url: "/api/fix", method: "POST", headers: { "content-type": "application/json", "x-divination-token": "tok" }, body: { key: "o/r#8" } },
+  ]);
+  assert.equal(p.fix.textContent, "Fixing…");
+  assert.equal(p.fix.disabled, true);
+});
+
+test("Fix all asks for all", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.click(p.fixAll);
+  assert.deepEqual(p.posts().map((r) => [r.url, r.body]), [["/api/fix", { key: "all" }]]);
+});
+
+test("nothing asks for a fix unless a Fix button is pressed", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  await p.poll();
+  await p.click(p.refreshNow);
+  await p.click(p.liveToggle);
+  await p.click(p.toggle);
+  await p.click(p.draft);
+  await p.click(p.tick);
+  assert.ok(!p.server.requests.some((r) => r.url.startsWith("/api/fix")));
+});
+
+test("while a fix runs, the status line says which PR and how far", async () => {
+  const all = page(null, { status: FIXING_ALL });
+  await all.finishParsing();
+  assert.equal(all.liveStatus.textContent, "fixing o/r#8, 2 of 14");
+
+  const one = page(null, { status: { ...LIVE, job: { name: "fix:o/r#8", startedAt: 1 }, fix: { key: "o/r#8", index: 1, total: 1, stopping: false } } });
+  await one.finishParsing();
+  assert.equal(one.liveStatus.textContent, "fixing o/r#8");
+  assert.deepEqual([one.fix.disabled, one.fixAll.disabled, one.fixAll.textContent], [true, true, "Fix all"]);
+});
+
+test("while Fix all runs its button stops it, and the other Fix buttons wait", async () => {
+  const p = page(null, { status: FIXING_ALL });
+  await p.finishParsing();
+  assert.deepEqual([p.fixAll.textContent, p.fixAll.disabled, p.fix.disabled], ["Stop after this one", false, true]);
+
+  p.server.status = { ...FIXING_ALL, fix: { ...FIXING_ALL.fix!, stopping: true } }; // what the server answers once asked
+  await p.click(p.fixAll);
+  assert.deepEqual(p.posts().map((r) => [r.url, r.body]), [["/api/fix/stop", {}]]);
+  assert.deepEqual([p.fixAll.textContent, p.fixAll.disabled], ["Stopping after this one…", true]);
+
+  // When it is over, the button is itself again.
+  p.server.status = { ...LIVE, lastJob: { name: "fix:all", ok: true, finishedAt: 9 } };
+  await p.poll();
+  assert.deepEqual([p.fixAll.textContent, p.fixAll.disabled, p.fix.disabled], ["Fix all", false, false]);
+});
+
+test("when the server is busy a Fix button says so and can be pressed again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.server.postStatus = 409;
+  await p.click(p.fix);
+  assert.equal(p.liveStatus.textContent, "busy, try again in a moment");
+  assert.deepEqual([p.fix.textContent, p.fix.disabled], ["Fix", false]);
+});
+
+test("with the server gone the Fix buttons cannot be pressed", async () => {
+  const p = page(null, { status: null });
+  await p.finishParsing();
+  assert.deepEqual([p.fix.disabled, p.fixAll.disabled], [true, true]);
 });

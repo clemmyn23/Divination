@@ -37,6 +37,22 @@ test("one key sends one item; a second press is a cache hit", async () => {
   assert.equal(runs.length, 1);
 });
 
+test("asked again, an item already done is sent again and its new answer replaces the old one", async () => {
+  cachePut(ctx, "fake-enricher", "hash-a", "old");
+  assert.deepEqual(await enrichOnDemand(ctx, [src], "fake-enricher", "a", { again: true }), { ran: 1, cached: 0 });
+  assert.deepEqual(runs.map((r) => r.map((i) => i.key)), [["a"]]);
+  assert.equal(cacheGet(ctx, "fake-enricher", "hash-a"), "out-a");
+});
+
+test("a rerun that fails keeps the answer that was there", async () => {
+  cachePut(ctx, "fake-enricher", "hash-a", "old");
+  enricher.run = async () => {
+    throw new Error("claude failed");
+  };
+  await assert.rejects(enrichOnDemand(ctx, [src], "fake-enricher", "a", { again: true }), /claude failed/);
+  assert.equal(cacheGet(ctx, "fake-enricher", "hash-a"), "old");
+});
+
 test("all sends only what is not cached, in one call", async () => {
   cachePut(ctx, "fake-enricher", "hash-a", "out-a");
   assert.deepEqual(await enrichOnDemand(ctx, [src], "fake-enricher", "all"), { ran: 1, cached: 1 });

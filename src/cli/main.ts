@@ -6,6 +6,7 @@ import { sources } from "../sources/index.ts";
 import { collectCommand } from "./commands/collect.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { enrichCommand } from "./commands/enrich.ts";
+import { fixCommand } from "./commands/fix.ts";
 import { renderCommand } from "./commands/render.ts";
 import { scheduleCommand } from "./commands/schedule.ts";
 import { secretCommand } from "./commands/secret.ts";
@@ -31,6 +32,7 @@ export const commands: Record<string, Command> = {
   render: renderCommand(getCtx, sources),
   tick: tickCommand(getCtx, sources),
   enrich: enrichCommand(getCtx, sources),
+  fix: fixCommand(getCtx, sources),
   schedule: scheduleCommand(getCtx),
   secret: secretCommand(),
   "sweep-plan": sweepPlanCommand(getCtx),

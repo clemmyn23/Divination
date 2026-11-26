@@ -69,6 +69,10 @@ export interface MyPullFixture {
   reviews?: object[];
   comments?: object[];
   item?: object;
+  /** The statuses behind `status`, each with the link to its build. */
+  statuses?: object[];
+  /** What the PR itself says, over the usual: open, mine, on `me/ABC-<number>` into `main`, not a fork. */
+  pull?: object;
 }
 
 const person = (login: string) => ({ login, type: "User" });
@@ -124,16 +128,20 @@ export function githubRoutes(pulls: PullFixture[] = [PR1, PR2], login = "me", mi
       additions: p.additions,
       deletions: p.deletions,
       changed_files: 1,
-      head: { sha: p.sha },
+      state: "open",
+      title: `ABC-${p.number}: PR number ${p.number}`,
+      head: { sha: p.sha, ref: `me/ABC-${p.number}`, repo: { full_name: "o/r" } },
+      base: { ref: "main", repo: { full_name: "o/r" } },
       user: { login },
       mergeable: p.mergeable ?? null,
       mergeable_state: p.mergeableState ?? "unknown",
+      ...p.pull,
     };
     routes[`${pull}/reviews`] = p.reviews ?? [];
     routes[`${BASE}/repos/o/r/issues/${p.number}/comments`] = p.comments ?? [];
     routes[`${BASE}/repos/o/r/commits/${p.sha}`] = { sha: p.sha, commit: { committer: { date: p.pushedAt }, author: { date: p.pushedAt } } };
     routes[`${BASE}/repos/o/r/commits/${p.sha}/check-runs`] = { total_count: 0, check_runs: [] };
-    routes[`${BASE}/repos/o/r/commits/${p.sha}/status`] = { ...p.status, statuses: [] };
+    routes[`${BASE}/repos/o/r/commits/${p.sha}/status`] = { ...p.status, statuses: p.statuses ?? [] };
   }
   for (const p of pulls) {
     const pull = `${BASE}/repos/o/r/pulls/${p.number}`;

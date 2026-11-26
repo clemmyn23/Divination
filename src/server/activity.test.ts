@@ -241,3 +241,25 @@ test("what a Claude run loaded before it began is one line of counts", () => {
   assert.equal(a.lines()[0]!.text, "Claude loaded 312 tools, 2 MCP servers (claude.ai Slack, playwright), 56 skills, 8 plugins");
   assert.equal(a.lines()[1]!.text, "Claude loaded 2 tools, 0 MCP servers, 0 skills, 0 plugins");
 });
+
+test("a fix reads as a story: which PR, each step, how it ended", () => {
+  const { a } = activity();
+  a.record("fix-start", { key: "o/r#8", what: "ci" });
+  a.record("fix-step", { key: "o/r#8", step: "reading the log of Style check" });
+  a.record("fix-end", { key: "o/r#8", outcome: "pushed", text: "Moved the helper." });
+  a.record("fix-start", { key: "o/r#9", what: "conflicts" });
+  a.record("fix-end", { key: "o/r#9", outcome: "gave-up", text: "Needs a database change." });
+  a.record("fix-end", { key: "o/r#10", outcome: "failed", text: "the branch moved" });
+  a.record("fix-end", { key: "o/r#11", outcome: "refused", text: "CI is still running" });
+  a.record("fix-all", { pushed: 1, gaveUp: 1, failed: 1, refused: 1, skipped: 2 });
+  assert.deepEqual(a.lines().map((l) => [l.level, l.text]), [
+    ["info", "Fixing o/r#8 (CI failing)"],
+    ["info", "o/r#8: reading the log of Style check"],
+    ["info", "o/r#8: fix pushed: Moved the helper."],
+    ["info", "Fixing o/r#9 (merge conflicts)"],
+    ["info", "o/r#9: could not fix: Needs a database change."],
+    ["error", "o/r#10: fix failed: the branch moved"],
+    ["info", "o/r#11: not fixed: CI is still running"],
+    ["info", "Fix all finished: 1 pushed, 1 gave up, 1 failed, 1 not fixed, 2 skipped"],
+  ]);
+});

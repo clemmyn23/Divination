@@ -8,7 +8,9 @@ Every command here is run from this folder. The tool's own commands are run as
 
 ## 1. What you need first
 
-- **macOS.** Tokens are kept in the macOS Keychain, and the login item uses launchd.
+- **macOS, Linux or Windows.** The tool is used every day on macOS. On Linux and Windows
+  the token store is written and unit-tested but has not yet been run on a real machine,
+  and the login item (step 7) is for macOS only.
 - **Node 24 or newer.** The tool runs its TypeScript directly, so there is no build step.
   `.nvmrc` names the version, for `nvm use` or `fnm use`.
 - **pnpm 10.** `corepack enable` gives you the version this project pins in
@@ -51,7 +53,7 @@ Start with these in `config/local.yaml`:
 | `github.host` | Your GitHub host, such as `github.example.com` |
 
 Leave a source out of `sources` and it needs no setup. Later you are most likely to
-change `tick`, `claudeReads`, `github.crew`, `github.mine.ignoreCommenters`,
+change `tick`, `claudeReads`, `github.crew`, `github.fix`, `github.mine.ignoreCommenters`,
 `github.rank.riskPaths`, `slack.groups`, `slack.muteAuthors` and `hideOlderThanDays`.
 
 ## 4. Give each source access
@@ -68,7 +70,7 @@ Sign the `gh` tool in to the host you put in `github.host`:
 gh auth login --hostname <your host>
 ```
 
-That is all it needs. Two optional settings:
+That is all it needs. Three optional settings:
 
 - **`github.crew`**: fill this in only if you are in a review crew: the crew's GitHub
   team, its members and its review channel. The rules it switches on are written down in
@@ -76,6 +78,23 @@ That is all it needs. Two optional settings:
   what is waiting on your review.
 - **`github.mine.ignoreCommenters`**: GitHub usernames whose comments on your own PRs do
   not count as waiting on your answer, such as a review bot that signs in as a person.
+- **`github.fix.clones`**: switches on the **Fix** button for your own PRs that are
+  failing CI or have merge conflicts. Name your local clone of each repository you want
+  it for:
+
+  ```yaml
+  github:
+    fix:
+      clones:
+        "acme/monolith": /Users/you/code/monolith
+  ```
+
+  A fix also needs the `teamcity` command-line tool signed in (`teamcity auth login`),
+  to read the failing builds' logs, and the `claude` tool signed in. `doctor` checks all
+  three once a clone is named. The README's
+  [Fixing your own PRs](README.md#fixing-your-own-prs) says what a fix does and does not
+  do. This is the one part of the tool that changes anything outside your machine: it
+  pushes commits to your own PRs' branches.
 
 ### Slack
 
@@ -129,11 +148,21 @@ is limited.
 
 ### Where tokens are kept
 
-`secret set <name>` asks for the value in the terminal, hides what you type, and stores
-it in the macOS Keychain under the service `divination`. A token can also come from the
-environment as `DIVINATION_<NAME>`, such as `DIVINATION_SLACK`. Tokens are read from those
-two places and nowhere else; they are never written to config, to `out/`, to logs or into
-an error message.
+`secret set <name>` stores a token in your computer's own token store, under the name
+`divination`. That store's tool asks for the value in the terminal and hides what you
+type, so the token never passes through this program on its way in.
+
+| Platform | Where the token goes | What it needs |
+|---|---|---|
+| macOS | The Keychain | Nothing extra |
+| Linux | The desktop keyring (GNOME Keyring, KWallet) | The `secret-tool` command, from your distribution's libsecret tools package, and a keyring that is running |
+| Windows | The Credential Manager | Nothing extra; it uses Windows PowerShell (`powershell.exe`) |
+
+A token can also come from the environment as `DIVINATION_<NAME>`, such as
+`DIVINATION_SLACK`; the environment is checked first. Use it where there is no token
+store, such as a Linux server or WSL with no keyring. Tokens are read from those two
+places and nowhere else; they are never written to config, to `out/`, to logs or into an
+error message.
 
 ## 5. Check it
 
@@ -163,7 +192,7 @@ pnpm divination render --fixtures
 It prints the path of the sample page, `out/site/fixture.html`; open that file in your
 browser. Your real page is left alone.
 
-## 7. Keep it running from login (optional)
+## 7. Keep it running from login (optional, macOS only)
 
 ```bash
 pnpm divination schedule install

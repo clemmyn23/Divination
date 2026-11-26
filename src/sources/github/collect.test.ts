@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { BASE, HOST, MINE1, MINE2, PR1, PR2, githubRoutes } from "../../../test/fixtures/github/api.ts";
-import { contextWith, fakeExec, fakeHttp } from "../../../test/helpers.ts";
+import { contextWith, fakeExec, fakeHttp, tempRoot } from "../../../test/helpers.ts";
 import { ciState, collectGithub } from "./collect.ts";
+import { recordAttempt } from "./fix/attempts.ts";
 import { github } from "./index.ts";
 
 function setup(routes = githubRoutes(), local: object = {}) {
@@ -249,6 +250,7 @@ test("one of my PRs carries what the search, the PR and its head commit say abou
       conflicts: false,
       unanswered: 0,
       waits: { on: "me", reasons: ["ready to merge"] },
+      fix: { can: false, spent: false },
     },
   ]);
 });
@@ -318,4 +320,88 @@ test("with no crew configured, the same PR is a direct request, nobody is crew a
   const [pr] = (await collectGithub({ ...ctx, secrets: { get: async () => "xoxp-sekrit" } })).prs;
   assert.deepEqual([pr!.request, "byCrew" in pr!, "signal" in pr!, pr!.rank.reasons.includes("rotation")], ["direct", false, false, false]);
   assert.ok(http.calls.every((u) => u.startsWith(BASE)));
+});
+
+const WITH_CLONE = { github: { host: HOST, fix: { clones: { "o/r": "/work/monolith" } } } };
+const tried = (startSha: string, pushedSha: string, text = "Moved the helper.") => ({ at: 5, what: "ci" as const, checks: [], startSha, pushedSha, outcome: "pushed" as const, text, ranClaude: true });
+
+test("each PR of mine says whether it can be fixed", async () => {
+  const withClone = await collectGithub(setup(githubRoutes([], "me", [MINE1, MINE2]), WITH_CLONE).ctx);
+  assert.deepEqual(withClone.mine!.map((p) => [p.key, p.fix]), [
+    ["o/r#7", { can: false, spent: false }], // green: nothing to fix
+    ["o/r#8", { can: true, spent: false }], // red and conflicted
+  ]);
+  const without = await collectGithub(setup(githubRoutes([], "me", [MINE1, MINE2])).ctx);
+  assert.deepEqual(without.mine!.map((p) => p.fix), [{ can: false, spent: false }, { can: false, spent: false }]);
+});
+
+test("after two attempts in a row a PR says so, with what the last one did", async () => {
+  // "s0" is my own last commit: both commits after it were pushed by fixes.
+  const routes = { ...githubRoutes([], "me", [MINE2]), [`${BASE}/repos/o/r/commits/s0`]: { sha: "s0", commit: { committer: { date: MINE2.pushedAt } } } };
+  const { ctx } = setup(routes, WITH_CLONE);
+  recordAttempt(ctx, "o/r#8", tried("s0", "s1", "First try."));
+  recordAttempt(ctx, "o/r#8", tried("s1", MINE2.sha, "Second try."));
+  assert.deepEqual((await collectGithub(ctx)).mine![0]!.fix, { can: false, spent: true, last: { at: 5, outcome: "pushed", text: "Second try." } });
+});
+
+test("a fix's push is not my answer: changes requested before it still wait on me", async () => {
+  // Changes were requested at 05:00. The head commit, made at 09:00, is one a fix pushed;
+  // my own last commit was at 02:00.
+  const asked = {
+    ...MINE1,
+    sha: "fixsha",
+    pushedAt: "2026-11-23T09:00:00Z",
+    reviews: [{ user: { login: "ann", type: "User" }, state: "CHANGES_REQUESTED", submitted_at: "2026-11-23T05:00:00Z", commit_id: "minesha", body: "" }],
+  };
+  const routes = () => ({
+    ...githubRoutes([], "me", [asked]),
+    [`${BASE}/repos/o/r/commits/minesha`]: { sha: "minesha", commit: { committer: { date: "2026-11-23T02:00:00Z" } } },
+  });
+
+  const fixed = setup(routes(), WITH_CLONE);
+  recordAttempt(fixed.ctx, "o/r#7", tried("minesha", "fixsha"));
+  assert.deepEqual((await collectGithub(fixed.ctx)).mine![0]!.waits, { on: "me", reasons: ["changes requested"] });
+  assert.ok(fixed.http.calls.includes(`${BASE}/repos/o/r/commits/minesha`));
+  assert.ok(!fixed.http.calls.includes(`${BASE}/repos/o/r/commits/fixsha`));
+
+  // The same PR where the head commit is my own: my push answered the review.
+  const mine = setup(routes(), WITH_CLONE);
+  assert.deepEqual((await collectGithub(mine.ctx)).mine![0]!.waits, { on: "others", reasons: ["waiting on a second look"] });
+});
+
+test("with no clones named the doctor has no fix checks; with one, the clone, the log tool and Claude are checked", async () => {
+  const plain = await github.doctor(setup().ctx);
+  assert.deepEqual(plain.map((c) => c.name), ["host", "gh login", "api"]);
+
+  const clone = tempRoot(); // any folder that exists
+  const exec = fakeExec({
+    "gh auth token": { stdout: "tok-123\n" },
+    [`git -C ${clone} rev-parse --git-dir`]: { stdout: ".git\n" },
+    [`git -C ${clone} remote get-url origin`]: { stdout: `git@${HOST}:o/r.git\n` },
+    "teamcity auth status": {},
+    "claude auth status": { stdout: '{"loggedIn":true}' },
+  });
+  const ctx = contextWith({ github: { host: HOST, fix: { clones: { "o/r": clone } } } }, { http: fakeHttp(githubRoutes()), exec });
+  const checks = await github.doctor(ctx);
+  assert.deepEqual(checks.map((c) => [c.name, c.ok]), [["host", true], ["gh login", true], ["api", true], ["fix clone o/r", true], ["teamcity", true], ["claude", true]]);
+  assert.equal(checks[3]!.detail, clone);
+});
+
+test("the doctor says how to fix a clone that is missing or not this repository, and a log tool that is signed out", async () => {
+  const clone = tempRoot();
+  const exec = fakeExec({
+    "gh auth token": { stdout: "tok-123\n" },
+    [`git -C ${clone} rev-parse --git-dir`]: { stdout: ".git\n" },
+    [`git -C ${clone} remote get-url origin`]: { stdout: `git@${HOST}:o/other.git\n` },
+    "teamcity auth status": { code: 1 },
+    "claude auth status": { stdout: '{"loggedIn":true}' },
+  });
+  const local = { github: { host: HOST, fix: { clones: { "o/r": clone, "o/gone": "/no/such/folder" } } } };
+  const checks = await github.doctor(contextWith(local, { http: fakeHttp(githubRoutes()), exec }));
+  const named = (name: string) => checks.find((c) => c.name === name)!;
+  assert.deepEqual([named("fix clone o/r").ok, named("fix clone o/gone").ok, named("teamcity").ok], [false, false, false]);
+  assert.match(named("fix clone o/r").detail, /its origin is not o\/r on git\.example\.com/);
+  assert.match(named("fix clone o/gone").detail, /is not a git repository/);
+  assert.equal(named("fix clone o/gone").fix, "set github.fix.clones in config/local.yaml to the path of your clone of o/gone");
+  assert.equal(named("teamcity").fix, "teamcity auth login");
 });

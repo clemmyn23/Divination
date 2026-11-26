@@ -47,8 +47,19 @@ test("panel groups PRs and shows review drafts with copy buttons", () => {
   assert.ok(html.indexOf("Waiting on authors") < html.indexOf("Covered or low priority"));
   assert.equal((html.match(/Copy comment/g) ?? []).length, 1);
   assert.ok(html.includes('data-copy="Rename `x`."'));
-  assert.ok(!html.includes('data-enrich="pr-review" data-key="o/r#1@aaa111"')); // drafted already, no button
+  assert.ok(!html.includes('data-key="o/r#1@aaa111">Draft review</button>')); // drafted already: no draft button
   assert.ok(githubPanels(DATA, view)[0]!.html.includes('<button data-enrich="pr-review" data-key="o/r#1@aaa111">Draft review</button>'));
+});
+
+test("a drafted review can be run again: the draft is followed by a rerun button for the same PR", () => {
+  const review = { verdict: "comment", summary: "Fine.", findings: [] };
+  const html = githubPanels(DATA, { ...view, enrich: { "pr-review": { "o/r#1@aaa111": review } } })[0]!.html;
+  const rerun = '<button data-enrich="pr-review" data-key="o/r#1@aaa111" data-again>Rerun review</button>';
+  assert.ok(html.includes(`</details>\n${rerun}`));
+  // It replaces that PR's draft button; a PR with no draft yet still has the plain one.
+  assert.ok(!html.includes('data-key="o/r#1@aaa111">Draft review</button>'));
+  assert.equal((html.match(/>Draft review<\/button>/g) ?? []).length, 1);
+  assert.ok(!githubPanels(DATA, view)[0]!.html.includes("data-again"));
 });
 
 test("the first panel is a short blush one called the review queue", () => {

@@ -170,6 +170,29 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           say(`Asked for ${String(f.enricher)} on ${String(f.key)} (${plural(Number(f.items ?? 0), "item")})`);
           break;
 
+        // Fixing one of my PRs. Only step names, check names and Claude's own summary arrive
+        // here: never anything a build log or a file said.
+        case "fix-start":
+          say(`Fixing ${String(f.key)} (${f.what === "conflicts" ? "merge conflicts" : "CI failing"})`);
+          break;
+
+        case "fix-step":
+          say(`${String(f.key)}: ${String(f.step)}`);
+          break;
+
+        case "fix-end": {
+          const how: Record<string, string> = { pushed: "fix pushed", "gave-up": "could not fix", failed: "fix failed", refused: "not fixed" };
+          say(`${String(f.key)}: ${how[String(f.outcome)] ?? "fix ended"}: ${String(f.text ?? "")}`, f.outcome === "failed" ? "error" : "info");
+          break;
+        }
+
+        case "fix-all":
+          say(
+            `Fix all finished: ${Number(f.pushed ?? 0)} pushed, ${Number(f.gaveUp ?? 0)} gave up, ${Number(f.failed ?? 0)} failed, ` +
+              `${Number(f.refused ?? 0)} not fixed, ${Number(f.skipped ?? 0)} skipped`,
+          );
+          break;
+
         case "llm-start": {
           const tools = Array.isArray(f.tools) && f.tools.length > 0 ? `tools: ${f.tools.join(", ")}` : "no tools";
           say(`Claude (${String(f.model)}) started: ${String(f.prompt)}, ${tools}`);

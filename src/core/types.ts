@@ -43,6 +43,24 @@ export interface Config {
     review: { model: string };
     /** My own PRs. Comments from these GitHub usernames are not counted as waiting on an answer. */
     mine: { ignoreCommenters: string[] };
+    /**
+     * Fixing my own PRs. `clones` maps "owner/repo" to the absolute path of my local clone;
+     * a repository that is not listed gets no Fix button, and with none listed the
+     * feature is off.
+     */
+    fix: {
+      clones: Record<string, string>;
+      model: string;
+      /** The most one fix may spend. `enrich.maxBudgetUsd` does not apply to a fix. */
+      maxBudgetUsd: number;
+      timeoutMinutes: number;
+      /** Attempts in a row on one PR before it is handed back to me. */
+      maxAttempts: number;
+      /** A fix that changes a path matching one of these globs is thrown away. */
+      neverTouch: string[];
+      /** A fix that changes more files than this is thrown away. */
+      maxFiles: number;
+    };
     rank: { riskPaths: RiskPath[]; docsPattern: string; quickWinMaxLines: number; largeLines: number };
     /**
      * The review crew I am in, if any. Left empty there is no crew: nothing is a rotation
@@ -111,6 +129,8 @@ export type Exec = (
   opts?: {
     input?: string;
     env?: Record<string, string>;
+    /** The folder the program runs in. The tool's own folder when left out. */
+    cwd?: string;
     timeoutMs?: number;
     /** Called with each piece of output as it arrives. The whole output is still returned at the end. */
     onStdout?: (chunk: string) => void;

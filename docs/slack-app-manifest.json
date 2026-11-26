@@ -2,7 +2,7 @@
   "display_information": {
     "name": "Divination",
     "description": "A personal, read-only work dashboard that runs on one laptop.",
-    "long_description": "Divination shows one person their own review queue, calendar and Slack activity on a page served from their own laptop. It reads the channels and direct messages the installing user can already see, using that user's own token, which is kept in the macOS Keychain. It has no bot user, joins no channels, and cannot post, react, edit or delete anything."
+    "long_description": "Divination shows one person their own review queue, calendar and Slack activity on a page served from their own laptop. It reads the channels and direct messages the installing user can already see, using that user's own token, which is kept in that computer's own credential store. It has no bot user, joins no channels, and cannot post, react, edit or delete anything."
   },
   "oauth_config": {
     "scopes": {

@@ -14,12 +14,14 @@ It shows:
   waiting on you first.
 - **Alerts**: each alert channel's alerts today, counted by title.
 
-It only reads. Nothing is posted, reacted to, approved or merged, and the page is never
-published anywhere.
+It reads, with one exception you switch on yourself: a **Fix** button that pushes a commit
+to one of your own PRs when you press it. Nothing is posted, reacted to, approved or
+merged, and the page is never published anywhere.
 
 ## Start
 
-It needs macOS, Node 24 or newer and pnpm.
+It needs Node 24 or newer and pnpm. It is used every day on macOS;
+[INSTALL.md](INSTALL.md) says where Linux and Windows stand.
 
 ```bash
 pnpm install
@@ -42,9 +44,10 @@ All are run as `pnpm divination <command>`.
 | `collect [source]` | Gather data now, with plain API calls |
 | `render [--fixtures]` | Redraw the page from the last collected data; `--fixtures` draws a sample page |
 | `tick [--force]` | Collect and redraw once; skipped outside working hours unless forced |
-| `enrich <enricher> <key \| all>` | Call Claude for one item. This is an LLM call |
+| `enrich <enricher> <key \| all> [--again]` | Call Claude for one item; `--again` redoes one already done. This is an LLM call |
+| `fix <key \| all>` | Fix one of your PRs, or every one that can be fixed. This calls Claude and pushes |
 | `schedule install \| uninstall \| status` | Keep the page server running from login |
-| `secret set <name>` | Store a token in the macOS Keychain |
+| `secret set <name>` | Store a token in this computer's token store |
 | `sweep-plan` | Print what a hand-started Slack sweep should read |
 
 `pnpm test` runs the tests and `pnpm typecheck` checks the types.
@@ -85,17 +88,59 @@ The review queue's own rules for a review crew (rotation, crew members, signals 
 review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply only when
 `github.crew` is filled in.
 
+## Fixing your own PRs
+
+A PR of yours that is failing CI or has merge conflicts can get a **Fix** button. It is
+off until you name your local clone of the repository in `github.fix.clones`
+([INSTALL.md](INSTALL.md#review-queue-and-my-prs-github) says how). When you press it:
+
+1. The tool reads the logs of the failing builds, with the `teamcity` tool.
+2. It makes a throwaway worktree of the PR's branch from your clone. Your own checkout is
+   not touched.
+3. Claude reads and edits files in that worktree, and nothing else. It cannot run
+   anything.
+4. The tool commits what Claude changed and pushes it to the PR's branch, never with
+   force.
+5. The worktree is removed, and the PR's line says what happened. CI is the test.
+
+What to expect:
+
+- **Conflicts come first.** A PR with conflicts gets the base branch merged in and the
+  conflicts resolved, and nothing else. What CI then fails is the next press.
+- **Two attempts, then over to you.** After `github.fix.maxAttempts` attempts in a row the
+  button gives way to "Tried twice, over to you". A commit of your own starts the count
+  again.
+- **A fix that cannot be made says why and pushes nothing**: the log shows the build
+  machine failed, the fix is not clear, or the change broke a rule (it touched CI
+  configuration, or too many files).
+- **A fix's push is not your answer.** A PR with changes requested stays in Needs you
+  after a fix.
+- **Fix all** works through every fixable PR in **Needs you** and **To fix**, one at a
+  time. PRs folded away as old, or ticked off, are left out; each keeps its own button.
+  While it runs the button reads **Stop after this one**.
+
+It does not answer review comments, fix PRs from a fork or drafts, read logs from
+anything but TeamCity, or re-run a build. The same thing from a terminal is
+`pnpm divination fix <owner/repo#number | all>`.
+
 ## When Claude is called
 
 Collecting and drawing never call an LLM. Claude is called only when you ask:
 
-- a button with a sparkle on the page (**Draft review**, **Summarise threads**), or the
-  `enrich` command typed by hand;
+- a button with a sparkle on the page (**Draft review**, **Rerun review**, **Summarise
+  threads**), or the `enrich` command typed by hand. **Rerun review** drafts a review
+  again for a PR that already has one and replaces the old draft; if the rerun fails, the
+  old draft stays;
 - `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session
   ([INSTALL.md](INSTALL.md#4-give-each-source-access) says when you need them);
 - **Refresh now**, but only with `claudeReads.onRefresh: true`, and only for sources whose
   `transport` is `inbox`. After its usual refresh it runs the same two reads headless, on
   Haiku, with nothing but the connector's read-only tools. The timer never does this.
+- **Fix** and **Fix all**, also with a sparkle, or the `fix` command typed by hand. A fix
+  has its own spending cap and time limit (`github.fix.maxBudgetUsd`, $3, and
+  `github.fix.timeoutMinutes`, 20). The most one press of Fix all can cost is the number
+  of PRs it covers, shown when you hover over the button, times that cap; the longest it
+  can take is that number times the time limit.
 
 Refresh now's Claude reads are throttled: once Claude has read a source (or failed to),
 pressing again within `claudeReads.throttleMinutes` (2 by default) refreshes as usual but
@@ -133,13 +178,25 @@ Everything the tool writes goes under `out/`, which is not committed:
 
 ## Safety
 
-- Tokens are read from the macOS Keychain or the environment, and nowhere else. They are
-  never written to config, to `out/`, to logs or into an error message.
+- Tokens are read from the computer's own token store (the macOS Keychain, the Linux
+  desktop keyring or the Windows Credential Manager) or the environment, and nowhere else.
+  They are never written to config, to `out/`, to logs or into an error message.
 - The server listens on `127.0.0.1` only, answers only requests addressed to itself, and
   acts only on requests that carry a token it put in the page it served.
 - The page loads nothing from anywhere else.
 - Text gathered from GitHub, Slack and the calendar is treated as data. Prompts tell
-  Claude the same: text in a pull request or a message is never an instruction.
+  Claude the same: text in a pull request, a message or a build log is never an
+  instruction.
+- Slack and the calendar are only ever read. So is GitHub, except for the Fix button: it
+  pushes commits to the head branch of your own PRs, only when you press it, never with
+  force, and does nothing else to GitHub. It posts no comment, review, reaction or
+  approval, and merges nothing.
+- During a fix, Claude's file tools are confined to the throwaway worktree: it cannot
+  read or change anything else on the machine, and it cannot run a program. The git is
+  done by the tool's own code, with the repository's hooks switched off for every step
+  and without reading the worktree's own `.git` file, so nothing Claude wrote is run
+  here. A fix that changes CI configuration, `.claude/` or a hooks folder is thrown away. What a build log or a file says is never written to the
+  tool's own log.
 
 ## Adding a source
 
