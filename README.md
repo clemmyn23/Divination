@@ -141,7 +141,12 @@ a dialog:
 Each ticked note becomes a comment on its file and line. A note whose line is not part of
 the PR's diff goes in the overall comment instead, under its file and line. A review is
 only posted against the commit its draft was written for: if the PR has new commits, Post
-says so and you rerun the review.
+says so and you rerun the review. It is also only posted from the draft that is on screen:
+if the draft was rerun while its dialog was open, Post says so and you open it again.
+
+If the server does not answer a post, the page says the review may or may not have gone:
+check the PR before pressing Post again. A draft that has been posted says when, and can
+be posted from again, for instance to approve after a first round of comments.
 
 Your ticks and edits are kept in the browser tab until you post or the draft is rerun, and
 the page does not reload itself while a review is open. Claude is not involved in posting.

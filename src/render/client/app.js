@@ -130,7 +130,8 @@
     const ticked = state.picks.filter((entry) => entry.on && entry.text.trim() !== "");
     const summary = ticked.find((entry) => entry.pick === "summary");
     const notes = ticked.filter((entry) => entry.pick !== "summary").map((entry) => ({ index: Number(entry.pick), text: entry.text }));
-    return { key: dialog.dataset.review, event: state.event, message: state.message, ...(summary ? { summary: summary.text } : {}), notes };
+    // The draft's fingerprint goes too: the server refuses if the draft has been rerun since.
+    return { key: dialog.dataset.review, draft: dialog.dataset.draft, event: state.event, message: state.message, ...(summary ? { summary: summary.text } : {}), notes };
   }
 
   // The Post button says what it will send, and is off when there is nothing to send.
@@ -192,8 +193,10 @@
       }
       refreshReview(dialog);
       // Closed by its button or with Escape: now the page may catch up.
+      // Not while a review is on its way, though: a reload then would bring back a page
+      // that offers to post it again.
       dialog.addEventListener?.("close", () => {
-        if (reloadWaiting && !reviewIsOpen()) reload();
+        if (reloadWaiting && !posting && !reviewIsOpen()) reload();
       });
     }
   }
@@ -228,26 +231,32 @@
     const say = (text) => {
       if (status) status.textContent = text;
     };
+    const request = reviewRequest(dialog);
     posting = true;
+    // Its ticks stop being kept as it is sent, not when it is answered: whatever happens
+    // to this page meanwhile, it does not come back offering the same review again.
+    sentReviews.add(dialog);
+    saveReviews();
     refreshReview(dialog);
     say("Posting…");
+    const notSent = (why) => {
+      sentReviews.delete(dialog);
+      saveReviews(); // kept again, for the next try
+      say(why);
+    };
     try {
-      const res = await post("/api/review/post", reviewRequest(dialog));
+      const res = await post("/api/review/post", request);
       const answer = await res.json().catch(() => ({}));
-      if (res.ok) {
-        sentReviews.add(dialog);
-        saveReviews();
-        say(posted(answer));
-      } else if (res.status === 403) {
-        say("Not posted: this page is out of date. Close the review and open it again; your ticks are kept.");
-      } else {
-        say(`Not posted: ${answer.error ?? `the server said no (${res.status})`}`);
-      }
+      if (res.ok) say(posted(answer));
+      else if (res.status === 403) notSent("Not posted: this page is out of date. Close the review and open it again; your ticks are kept.");
+      else notSent(`Not posted: ${answer.error ?? `the server said no (${res.status})`}`);
     } catch {
-      say("Not posted: the server is not running.");
+      // No answer is not a no: the request may have reached GitHub before the server went.
+      notSent("The server did not answer, so the review may or may not have been posted. Check the PR before pressing Post again.");
     }
     posting = false;
     refreshReview(dialog);
+    if (reloadWaiting && !reviewIsOpen()) reload(); // it was closed while this was on its way
   }
 
   async function copyText(button, text) {

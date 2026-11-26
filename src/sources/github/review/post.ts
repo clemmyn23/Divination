@@ -14,6 +14,8 @@ export type ReviewEvent = "COMMENT" | "APPROVE" | "REQUEST_CHANGES";
 export interface PostRequest {
   /** The draft's key: `owner/repo#number@commit`. */
   key: string;
+  /** The fingerprint of the draft the dialog was drawn from. A rerun changes it. */
+  draft: string;
   event: ReviewEvent;
   /** My own words. They go first in the review's overall comment. */
   message: string;
@@ -38,6 +40,7 @@ export class Refusal extends Error {}
 export const postedKey = (reviewKey: string): string => `posted:${reviewKey}`;
 
 const KEY = /^([\w.-]+\/[\w.-]+)#(\d{1,9})@([0-9A-Za-z]{1,64})$/;
+const PRINT = /^[0-9a-f]{16}$/;
 const EVENTS: ReviewEvent[] = ["COMMENT", "APPROVE", "REQUEST_CHANGES"];
 const KEY_MAX = 300;
 const TEXT_MAX = 10_000;
@@ -47,8 +50,9 @@ const isText = (value: unknown): value is string => typeof value === "string" &&
 
 /** Read a request's fields. A string back is what is wrong with them. */
 export function parsePost(fields: Record<string, unknown>): PostRequest | string {
-  const { key, event, message = "", summary, notes = [] } = fields;
+  const { key, draft, event, message = "", summary, notes = [] } = fields;
   if (typeof key !== "string" || key.length > KEY_MAX || !KEY.test(key)) return '"key" must be a drafted review, as owner/repo#number@commit';
+  if (typeof draft !== "string" || !PRINT.test(draft)) return '"draft" must be the fingerprint of the draft being posted';
   if (!EVENTS.includes(event as ReviewEvent)) return '"event" must be COMMENT, APPROVE or REQUEST_CHANGES';
   if (!isText(message)) return '"message" must be text, at most 10,000 characters';
   if (summary !== undefined && !isText(summary)) return '"summary" must be text, at most 10,000 characters';
@@ -61,7 +65,7 @@ export function parsePost(fields: Record<string, unknown>): PostRequest | string
     }
     read.push({ index: index as number, text });
   }
-  return { key, event: event as ReviewEvent, message, ...(summary !== undefined ? { summary } : {}), notes: read };
+  return { key, draft, event: event as ReviewEvent, message, ...(summary !== undefined ? { summary } : {}), notes: read };
 }
 
 interface Finding {
@@ -80,7 +84,8 @@ function findingsOf(draft: unknown): Finding[] | undefined {
 /**
  * Post one review to one PR, under my name.
  *
- * In order: the draft must be in the cache; the PR must be open and still at the commit
+ * In order: the draft must be in the cache, and be the one the dialog was drawn from; the
+ * PR must be open and still at the commit
  * the draft was written for; each ticked note is placed on its line of the diff, or in
  * the overall comment when it has none; a comment or a change request with nothing to say
  * is refused. Then one review is posted, and the post is marked so the page can say so.
@@ -93,8 +98,12 @@ export async function postReview(ctx: Context, req: PostRequest, deps: { github?
   const number = Number(named[2]);
   const sha = named[3]!;
 
-  const findings = findingsOf(cacheGet(ctx, "pr-review", hashOf(req.key)));
+  const stored = cacheGet(ctx, "pr-review", hashOf(req.key));
+  const findings = findingsOf(stored);
   if (!findings) throw new Refusal("there is no drafted review for this PR at that commit");
+  // The notes are named by their place in the draft, so it must be the very draft that was
+  // on screen: after a rerun the same place is another note, on another file and line.
+  if (hashOf(stored) !== req.draft) throw new Refusal("the draft was rerun after this review was opened; close it and open it again");
   const missing = req.notes.find((note) => note.index >= findings.length);
   if (missing) throw new Refusal(`the draft has no note ${missing.index + 1}; reload the page`);
 
@@ -123,13 +132,19 @@ export async function postReview(ctx: Context, req: PostRequest, deps: { github?
 
   const posted = await gh.review(repo, number, { commit_id: sha, event: req.event, body, comments });
 
+  // From here the review is on the PR, and nothing may make that look like a failure: a
+  // failure invites a second press, and a second press is a second review.
   try {
     setDone(ctx, postedKey(req.key), true);
   } catch {
-    // The review is on the PR whether or not the mark could be written.
+    // The mark could not be written.
   }
-  // Which PR, what kind and how many: never the words.
-  ctx.log("review-post", { key: `${repo}#${number}`, event: req.event.toLowerCase(), comments: comments.length, inBody: loose.length });
+  try {
+    // Which PR, what kind and how many: never the words.
+    ctx.log("review-post", { key: `${repo}#${number}`, event: req.event.toLowerCase(), comments: comments.length, inBody: loose.length });
+  } catch {
+    // The log could not be written.
+  }
 
   const url = typeof posted.html_url === "string" && posted.html_url.startsWith(`https://${ctx.config.github.host}/`) ? posted.html_url : undefined;
   return { comments: comments.length, inBody: loose.length, ...(url ? { url } : {}) };

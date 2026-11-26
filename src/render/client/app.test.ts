@@ -214,7 +214,7 @@ function page(stored: string | null, opts: Options = {}) {
     status: opts.status === undefined ? LIVE : opts.status,
     postStatus: 200,
     /** What the server answers a posted review with. */
-    review: { status: 200, body: { comments: 2, inBody: 1 } as object },
+    review: { status: 200, body: { comments: 2, inBody: 1 } as object, hold: null as Promise<void> | null },
     requests: [] as { url: string; method: string; headers: Record<string, string>; body: unknown }[],
   };
   const intervals: { fn: () => unknown; ms: number }[] = [];
@@ -245,6 +245,7 @@ function page(stored: string | null, opts: Options = {}) {
       server.requests.push({ url, method, headers: { ...(init.headers ?? {}) }, body: init.body ? JSON.parse(init.body) : undefined });
       if (server.status === null) throw new Error("connection refused");
       if (method === "POST" && url === "/api/review/post") {
+        if (server.review.hold) await server.review.hold; // GitHub is taking its time
         const { status, body } = server.review;
         if (status === 200) server.status = { ...server.status, renderedAt: server.status.renderedAt + 1 }; // the server redraws the page
         return { ok: status === 200, status, json: async () => body };
@@ -929,7 +930,7 @@ test("Post sends what is ticked, as it was edited, with my message and the kind 
   await p.click(r.post);
 
   assert.deepEqual(p.posts().map((q) => [q.url, q.headers["x-divination-token"], q.body]), [
-    ["/api/review/post", "tok", { key: REVIEW_KEY, event: "APPROVE", message: "lgtm", summary: "Adds an avatar menu.", notes: [{ index: 1, text: "Rename `x` to `total`." }] }],
+    ["/api/review/post", "tok", { key: REVIEW_KEY, draft: "print-1", event: "APPROVE", message: "lgtm", summary: "Adds an avatar menu.", notes: [{ index: 1, text: "Rename `x` to `total`." }] }],
   ]);
   assert.equal(r.status.textContent, "Posted: 2 comments on lines, 1 in the overall comment.");
   assert.equal(r.post.disabled, true); // one press, one review
@@ -948,7 +949,7 @@ test("a note that is not ticked is not sent, and neither is a ticked note whose 
   await p.input(r.second.box);
   assert.equal(r.post.textContent, "Post 1 comment · Comment");
   await p.click(r.post);
-  assert.deepEqual(p.posts()[0]!.body, { key: REVIEW_KEY, event: "COMMENT", message: "", notes: [{ index: 1, text: "Rename `x`." }] });
+  assert.deepEqual(p.posts()[0]!.body, { key: REVIEW_KEY, draft: "print-1", event: "COMMENT", message: "", notes: [{ index: 1, text: "Rename `x`." }] });
 });
 
 test("what was posted is said plainly, whatever the mix", async () => {
@@ -968,7 +969,7 @@ test("what was posted is said plainly, whatever the mix", async () => {
 
 test("a post that was refused says why in the dialog, and can be tried again", async () => {
   const p = page(null);
-  p.server.review = { status: 409, body: { error: "the PR has new commits since this draft was written; rerun the review" } };
+  p.server.review = { status: 409, body: { error: "the PR has new commits since this draft was written; rerun the review" }, hold: null };
   await p.finishParsing();
   const r = p.review;
   r.message.value = "lgtm";
@@ -977,14 +978,14 @@ test("a post that was refused says why in the dialog, and can be tried again", a
   assert.equal(r.status.textContent, "Not posted: the PR has new commits since this draft was written; rerun the review");
   assert.equal(r.post.disabled, false);
 
-  p.server.review = { status: 200, body: { comments: 0, inBody: 0 } };
+  p.server.review = { status: 200, body: { comments: 0, inBody: 0 }, hold: null };
   await p.click(r.post);
   assert.equal(r.status.textContent, "Posted.");
 });
 
 test("a page whose token is no longer good says to reopen the review, and keeps the ticks", async () => {
   const p = page(null);
-  p.server.review = { status: 403, body: { error: "missing or wrong token" } };
+  p.server.review = { status: 403, body: { error: "missing or wrong token" }, hold: null };
   await p.finishParsing();
   const r = p.review;
   r.first.box.checked = true;
@@ -1122,4 +1123,50 @@ test("Copy in the dialog copies the note as I have edited it", async () => {
   p.review.second.words.value = "Rename `x` to `total`.";
   await p.click(p.review.second.copy);
   assert.deepEqual(p.copied, ["Rename `x` to `total`."]);
+});
+
+test("a review closed while it is being posted is not reloaded into a page that offers to post it again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  await p.click(r.open);
+  r.first.box.checked = true;
+  await p.input(r.first.box);
+  p.server.status = { ...LIVE, renderedAt: 101 }; // the page changed behind the open review
+  await p.poll();
+
+  let answer = () => {};
+  p.server.review.hold = new Promise((resolve) => (answer = resolve));
+  const pressing = p.click(r.post);
+  await settle();
+  assert.ok(!p.session.get("divination-review")!.includes(REVIEW_KEY)); // dropped as it is sent, not when it is answered
+  r.dialog.close(); // Escape, while GitHub is still answering
+  assert.equal(p.reloads, 0);
+
+  answer();
+  await pressing;
+  assert.equal(p.reloads, 1); // now the page may catch up, and it comes back with nothing ticked
+  assert.equal(p.posts().length, 1);
+});
+
+test("a refused review's ticks are kept again, for the next try", async () => {
+  const p = page(null);
+  p.server.review = { status: 409, body: { error: "the PR has new commits" }, hold: null };
+  await p.finishParsing();
+  p.review.first.box.checked = true;
+  await p.input(p.review.first.box);
+  await p.click(p.review.post);
+  assert.ok(p.session.get("divination-review")!.includes(REVIEW_KEY));
+});
+
+test("when the server does not answer, the page does not claim the review was not posted", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  const r = p.review;
+  r.message.value = "lgtm";
+  await p.input(r.message);
+  p.server.status = null; // it stopped after the page last heard from it
+  await p.click(r.post);
+  assert.match(r.status.textContent, /may or may not have been posted/);
+  assert.match(r.status.textContent, /Check the PR/);
 });

@@ -14,17 +14,22 @@ export function rightLines(patch: string | undefined): Map<number, number> {
   if (!patch) return lines;
   let hunk = -1;
   let next = 0;
-  for (const row of patch.split("\n")) {
+  const rows = patch.split("\n");
+  rows.forEach((row, i) => {
     const header = HUNK.exec(row);
     if (header) {
       hunk++;
       next = Number(header[1]);
-      continue;
+      return;
     }
-    if (hunk < 0) continue;
-    if (row.startsWith("+") || row.startsWith(" ")) lines.set(next++, hunk);
+    if (hunk < 0) return;
+    // A blank context line is a single space, but one that arrives with the space stripped
+    // is still a line: skipping it would put every later comment one line too high. Only
+    // the empty row after the patch's last line break is nothing.
+    const blank = row === "" && i < rows.length - 1;
+    if (row.startsWith("+") || row.startsWith(" ") || blank) lines.set(next++, hunk);
     // A removed line and the "no newline" marker are not lines of the new file.
-  }
+  });
   return lines;
 }
 
