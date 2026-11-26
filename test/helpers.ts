@@ -6,7 +6,7 @@ import { loadConfig } from "../src/core/config.ts";
 import { createContext } from "../src/core/context.ts";
 import { createSecrets } from "../src/core/secrets.ts";
 import { writeJson } from "../src/core/store.ts";
-import type { AttentionItem, Context, Enricher, Envelope, Exec, Http, Source, View } from "../src/core/types.ts";
+import type { AttentionItem, Context, Enricher, Envelope, Exec, Http, HttpInit, Source, View } from "../src/core/types.ts";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -128,11 +128,15 @@ function isWithHeaders(v: unknown): v is { $data: unknown; $headers: Record<stri
  * starts with. A function value is called with the URL. An unknown URL throws.
  * An answer that is an Error is thrown; `{ $data, $headers }` sets response headers.
  */
-export function fakeHttp(routes: Record<string, unknown | ((url: string) => unknown)>): Http & { calls: string[] } {
+export function fakeHttp(
+  routes: Record<string, unknown | ((url: string) => unknown)>,
+): Http & { calls: string[]; sent: { url: string; method: string; headers?: Record<string, string>; body?: string }[] } {
   const calls: string[] = [];
+  const sent: { url: string; method: string; headers?: Record<string, string>; body?: string }[] = []; // each request as it was made
   const keys = Object.keys(routes).sort((a, b) => b.length - a.length);
-  async function answerFor<T>(url: string): Promise<{ data: T; headers: Headers }> {
+  async function answerFor<T>(url: string, init: HttpInit = {}): Promise<{ data: T; headers: Headers }> {
     calls.push(url);
+    sent.push({ url, method: init.method ?? "GET", ...(init.headers ? { headers: init.headers } : {}), ...(init.body !== undefined ? { body: init.body } : {}) });
     const key = keys.find((k) => url.startsWith(k));
     if (key === undefined) throw new Error(`fakeHttp: no route for ${url}`);
     const value = routes[key];
@@ -143,8 +147,9 @@ export function fakeHttp(routes: Record<string, unknown | ((url: string) => unkn
   }
   return {
     calls,
-    json: <T>(url: string) => answerFor<T>(url),
-    text: (url: string) => answerFor<string>(url),
+    sent,
+    json: <T>(url: string, init?: HttpInit) => answerFor<T>(url, init),
+    text: (url: string, init?: HttpInit) => answerFor<string>(url, init),
   };
 }
 

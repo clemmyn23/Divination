@@ -2,6 +2,8 @@ import type { Context } from "../../core/types.ts";
 import type { CheckRun, CombinedStatus, QueueHit, TimelineEvent } from "./types.ts";
 
 const MAX_FILES = 300;
+/** GitHub lists at most this many of a PR's files. */
+const MAX_PATCHES = 3000;
 const QUEUE_LIMIT = 50;
 
 interface SearchItem {
@@ -31,6 +33,24 @@ export interface PullDetail {
   mergeable?: boolean | null;
   /** "blocked" when something required is missing: an approval, a required check. */
   mergeable_state?: string;
+}
+
+/** One comment of a review, on a line (or a run of lines ending at `line`) of the new file. */
+export interface ReviewComment {
+  path: string;
+  line: number;
+  side: "RIGHT";
+  start_line?: number;
+  start_side?: "RIGHT";
+  body: string;
+}
+
+/** A review as it is posted. `event` is COMMENT, APPROVE or REQUEST_CHANGES. */
+export interface NewReview {
+  commit_id: string;
+  event: string;
+  body: string;
+  comments: ReviewComment[];
 }
 
 /** "Bot" for an app's account; a person, or a machine user signed up as one, is "User". */
@@ -63,8 +83,9 @@ function nextLink(header: string | null): string | undefined {
 }
 
 /**
- * A read-only client for the GitHub REST API on the configured host. The token comes
- * from the `gh` CLI, is asked for once, and is only ever sent to that host.
+ * A client for the GitHub REST API on the configured host. The token comes from the `gh`
+ * CLI, is asked for once, and is only ever sent to that host. Everything it does is a
+ * read, except `review`, which posts one review to one PR.
  */
 export function createGithub(ctx: Context) {
   const host = ctx.config.github.host;
@@ -85,6 +106,15 @@ export function createGithub(ctx: Context) {
     const url = pathOrUrl.startsWith("https://") ? pathOrUrl : base + pathOrUrl;
     return ctx.http.json<T>(url, {
       headers: { authorization: `Bearer ${await getToken()}`, accept: "application/vnd.github+json" },
+    });
+  }
+
+  /** The one write this client makes. Nothing but `review` calls it. */
+  async function post<T>(path: string, body: unknown) {
+    return ctx.http.json<T>(base + path, {
+      method: "POST",
+      headers: { authorization: `Bearer ${await getToken()}`, accept: "application/vnd.github+json", "content-type": "application/json" },
+      body: JSON.stringify(body),
     });
   }
 
@@ -141,6 +171,20 @@ export function createGithub(ctx: Context) {
     async files(repo: string, number: number): Promise<string[]> {
       const files = await paged<{ filename: string }>(`/repos/${repo}/pulls/${number}/files?per_page=100`, MAX_FILES);
       return files.map((f) => f.filename);
+    },
+
+    /** The PR's files with their patches. A binary or very large file has no patch. */
+    async patches(repo: string, number: number): Promise<{ filename: string; patch?: string }[]> {
+      const files = await paged<{ filename: string; patch?: string }>(`/repos/${repo}/pulls/${number}/files?per_page=100`, MAX_PATCHES);
+      return files.map((f) => ({ filename: f.filename, ...(typeof f.patch === "string" ? { patch: f.patch } : {}) }));
+    },
+
+    /**
+     * Post a review to a PR, under the name of whoever `gh` is logged in as. Only a press
+     * of Post in a review's dialog leads here (see review/post.ts).
+     */
+    async review(repo: string, number: number, review: NewReview): Promise<{ html_url?: string }> {
+      return (await post<{ html_url?: string }>(`/repos/${repo}/pulls/${number}/reviews`, review)).data;
     },
 
     async ci(repo: string, sha: string): Promise<{ runs: CheckRun[]; combined: CombinedStatus }> {
