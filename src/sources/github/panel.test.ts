@@ -237,13 +237,13 @@ test("a PR's needs-you item names its author, then carries the same lozenges as 
   const data: GithubData = {
     login: "me",
     prs: [
-      pr(1, "review_now", { author: "brian-luc", byCrew: true }),
+      pr(1, "review_now", { author: "kit", byCrew: true }),
       pr(2, "quick_win", { rank: { score: 1, bucket: "quick_win", reasons: ["rotation"] } }),
     ],
   };
   const [crew, plain] = github.attention(data, view);
   // The author sits beside the crew lozenge; "rotation" is a lozenge, so it is not said again in words.
-  assert.deepEqual(crew!.parts, ["brian-luc", { tag: "raised by crew member", kind: "crew" }, { tag: "rotation" }, "touches billing, CI passing"]);
+  assert.deepEqual(crew!.parts, ["kit", { tag: "raised by crew member", kind: "crew" }, { tag: "rotation" }, "touches billing, CI passing"]);
   assert.equal(crew!.reason, "touches billing, rotation, CI passing, raised by crew member"); // the plain words are unchanged
   assert.deepEqual(plain!.parts, ["ann", { tag: "rotation" }]); // nothing left to say in words
 });

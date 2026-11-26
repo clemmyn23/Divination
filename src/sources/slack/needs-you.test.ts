@@ -28,7 +28,7 @@ test("reacting to the last message answers it", () => {
 });
 
 test("an app naming me is not someone asking for me", () => {
-  const app = { ts: "1", bot_id: "B1", text: "<@ME> requested a review from Team Mitnick" };
+  const app = { ts: "1", bot_id: "B1", text: "<@ME> requested a review from Team Kestrel" };
   assert.equal(needsYou([app], "ME", "channel"), undefined);
   assert.equal(needsYou([app, m("2", "U1", "<@ME> can you rebase?")], "ME", "channel"), "mentioned you");
 });

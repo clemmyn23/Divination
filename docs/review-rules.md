@@ -1,6 +1,6 @@
 # Review rules the dashboard knows about
 
-House rules for code review at Campaign Monitor that the review queue applies. Each one
+House rules for code review that the review queue applies. Each one
 names where it lives, so it can be changed in one place.
 
 All three are rules of a review crew, and all three are switched on by the `github.crew`
@@ -21,16 +21,16 @@ it is direct.
 ## Crew members may bypass the crew's review
 
 A pull request raised by a member of the review crew may go ahead without the crew's
-review. For example: Sha is the JS crew's captain, so a JavaScript review she raises can
-bypass the JS crew review.
+review. For example: if Ana is the frontend crew's captain, a frontend review she raises
+can bypass the frontend crew's review.
 
 The dashboard still lists these pull requests, in the same place and order as any other.
 It marks each with a lozenge, **raised by crew member**, on its line in the review queue
 and in its reason under "Needs you", so I can decide whether to spend time on it.
 
-- Who counts: `github.crew.members` in config, a list of GitHub usernames. For the JS crew
-  it is the membership of the Slack channel `#js-crew-members`, copied by hand; update the
-  list when that channel's membership changes.
+- Who counts: `github.crew.members` in config, a list of GitHub usernames. Nothing keeps
+  it in step with the crew: it is copied by hand from wherever the crew's membership is
+  kept (the members of its Slack channel, say), so update it when that changes.
 - Code: `byCrew` in `src/sources/github/collect.ts`, drawn in `src/sources/github/panel.ts`.
 
 ## Signals from the review channel

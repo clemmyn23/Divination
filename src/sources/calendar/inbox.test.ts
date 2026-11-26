@@ -91,7 +91,7 @@ test("being invited as optional, or the event living on someone else's calendar,
 
 test("a meeting that is on my calendar and a team calendar is mine, whichever is listed first", () => {
   const data = fromInbox(
-    dropped([timed("Standup", "12:00", "12:15", { calendar: "Team Mitnick" }), timed("Standup", "12:00", "12:15", { calendar: "primary" })]),
+    dropped([timed("Standup", "12:00", "12:15", { calendar: "Team Kestrel" }), timed("Standup", "12:00", "12:15", { calendar: "primary" })]),
     ctx(),
   );
   assert.deepEqual(
