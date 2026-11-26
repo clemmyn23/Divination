@@ -592,6 +592,10 @@ button[data-fix="all"] {
   font-size: 12px;
   line-height: 1.45;
   resize: vertical;
+  /* As tall as its words, where the browser can do that; the rows are the fallback. */
+  field-sizing: content;
+  min-height: 2.6em;
+  max-height: 40vh;
 }
 
 /* A note that is not ticked is not going anywhere: its text steps back. */
