@@ -207,10 +207,10 @@ test("doctor reports an API that does not answer", async () => {
 
 test("a PR raised by a crew member is marked, whatever the case of the name; others are not", async () => {
   // Both PRs in the fixture were raised by "ann".
-  const crew = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crewMembers: ["zed", "ANN"] } }).ctx);
+  const crew = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crew: { members: ["zed", "ANN"] } } }).ctx);
   assert.deepEqual(crew.prs.map((p) => [p.author, p.byCrew]), [["ann", true], ["ann", true]]);
 
-  const others = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crewMembers: ["zed"] } }).ctx);
+  const others = await collectGithub(setup(githubRoutes(), { github: { host: HOST, crew: { members: ["zed"] } } }).ctx);
   assert.ok(others.prs.every((p) => !("byCrew" in p)));
 });
 
@@ -296,4 +296,26 @@ test("a draft of mine waits on nobody, and drafts come last", async () => {
   const draft = { ...MINE2, item: { draft: true, updated_at: "2026-11-24T22:00:00Z" } };
   const data = await collectGithub(setup(githubRoutes([], "me", [draft, MINE1])).ctx);
   assert.deepEqual(data.mine!.map((p) => [p.key, p.draft, p.waits.on]), [["o/r#7", false, "me"], ["o/r#8", true, "draft"]]);
+});
+
+// The crew and me asked in one action: a rotation pick, for someone whose config names that crew.
+const PICKED = {
+  ...PR1,
+  timeline: [
+    { event: "review_requested", created_at: "2026-11-24T01:00:00Z", actor: { login: "ann" }, requested_team: { slug: "frontend-crew" } },
+    { event: "review_requested", created_at: "2026-11-24T01:00:00Z", actor: { login: "ann" }, requested_reviewer: { login: "me" } },
+  ],
+};
+
+test("with a crew configured, its rotation picks and its members' PRs are marked", async () => {
+  const local = { github: { host: HOST, crew: { rotationTeam: "frontend-crew", members: ["ann"] } } };
+  const [pr] = (await collectGithub(setup(githubRoutes([PICKED]), local).ctx)).prs;
+  assert.deepEqual([pr!.request, pr!.byCrew, pr!.rank.reasons.includes("rotation")], ["rotation", true, true]);
+});
+
+test("with no crew configured, the same PR is a direct request, nobody is crew and Slack is not asked", async () => {
+  const { ctx, http } = setup(githubRoutes([PICKED]));
+  const [pr] = (await collectGithub({ ...ctx, secrets: { get: async () => "xoxp-sekrit" } })).prs;
+  assert.deepEqual([pr!.request, "byCrew" in pr!, "signal" in pr!, pr!.rank.reasons.includes("rotation")], ["direct", false, false, false]);
+  assert.ok(http.calls.every((u) => u.startsWith(BASE)));
 });

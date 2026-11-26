@@ -15,12 +15,14 @@ claudeReads:
 
 github:
   host: github.example.com
-  rotationTeam: frontend-crew
-  crewMembers:
-    - ana   # crew captain
-    - kit
-  slackSignal:
-    channelId: C00000003
+  # Optional: only if you are in a review crew. Delete this block if you are not.
+  crew:
+    rotationTeam: frontend-crew   # the crew's GitHub team
+    members:                      # GitHub usernames
+      - ana   # crew captain
+      - kit
+    reviewChannel:
+      channelId: C00000003        # where the crew's reviews are asked for
 
 slack:
   transport: inbox   # fed by /slack-sweep; "api" needs a Slack app and a token

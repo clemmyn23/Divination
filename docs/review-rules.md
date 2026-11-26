@@ -3,13 +3,19 @@
 House rules for code review at Campaign Monitor that the review queue applies. Each one
 names where it lives, so it can be changed in one place.
 
+All three are rules of a review crew, and all three are switched on by the `github.crew`
+block in config. That block is optional. Someone who is not in a crew leaves it out, and
+then none of this applies: a review asked of them by name is direct, one that reaches
+them through a team is the team's, nobody is marked as a crew member, and no review
+channel is read.
+
 ## Rotation
 
 A review asked of the whole crew team and of me by the same person at the same moment is
 a rotation pick: it is mine. Asked of the team alone, it is the team's. Asked of me alone,
 it is direct.
 
-- Team name: `github.rotationTeam` in config.
+- Team name: `github.crew.rotationTeam` in config.
 - Code: `src/sources/github/classify.ts`.
 
 ## Crew members may bypass the crew's review
@@ -22,7 +28,7 @@ The dashboard still lists these pull requests, in the same place and order as an
 It marks each with a lozenge, **raised by crew member**, on its line in the review queue
 and in its reason under "Needs you", so I can decide whether to spend time on it.
 
-- Who counts: `github.crewMembers` in config, a list of GitHub usernames. For the JS crew
+- Who counts: `github.crew.members` in config, a list of GitHub usernames. For the JS crew
   it is the membership of the Slack channel `#js-crew-members`, copied by hand; update the
   list when that channel's membership changes.
 - Code: `byCrew` in `src/sources/github/collect.ts`, drawn in `src/sources/github/panel.ts`.
@@ -39,5 +45,5 @@ These signals need the review channel's posts with who reacted. They work when S
 read through the Web API. When Slack is fed by hand with `/slack-sweep`, the sweep does
 not collect them yet, so no pull request is skipped or flagged this way.
 
-- Channel and reactions: `github.slackSignal` in config.
+- Channel and reactions: `github.crew.reviewChannel` in config.
 - Code: `src/sources/github/slack-signal.ts`.

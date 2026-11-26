@@ -40,14 +40,22 @@ export interface Config {
   github: {
     transport: Transport;
     host: string;
-    rotationTeam: string;
-    /** GitHub usernames of the review crew's members. A PR one of them raises may bypass the crew's review. */
-    crewMembers: string[];
     review: { model: string };
     /** My own PRs. Comments from these GitHub usernames are not counted as waiting on an answer. */
     mine: { ignoreCommenters: string[] };
     rank: { riskPaths: RiskPath[]; docsPattern: string; quickWinMaxLines: number; largeLines: number };
-    slackSignal: { channelId: string; skipReactions: string[] };
+    /**
+     * The review crew I am in, if any. Left empty there is no crew: nothing is a rotation
+     * pick, nobody is a crew member and no review channel is read.
+     */
+    crew: {
+      /** The crew's GitHub team. A review asked of it and of me in one action is a rotation pick. */
+      rotationTeam: string;
+      /** GitHub usernames of the crew's members. A PR one of them raises may bypass the crew's review. */
+      members: string[];
+      /** The Slack channel where the crew's reviews are asked for, and the reactions that mean "skip this one". */
+      reviewChannel: { channelId: string; skipReactions: string[] };
+    };
   };
   slack: {
     transport: Transport;

@@ -111,8 +111,11 @@ Uses the `gh` command-line tool's login for the host in `github.host`.
 gh auth login --hostname <your host>
 ```
 
-Review rules it applies (rotation, crew members, signals from the review channel) are
-written down in [docs/review-rules.md](docs/review-rules.md).
+If you are in a review crew, fill in the `github.crew` block: the crew's GitHub team, its
+members and its review channel. The rules that switches on (rotation, crew members,
+signals from the review channel) are written down in
+[docs/review-rules.md](docs/review-rules.md). The block is optional; without it the review
+queue simply lists what is waiting on your review.
 
 A PR you raised shows in Needs you only when a reviewer has spoken and the next move is yours:
 
@@ -168,7 +171,7 @@ They are YAML, so comments are welcome. Settings merge key by key; a list in you
 replaces the whole default list.
 
 Settings you are most likely to change: `me`, `sources`, `tick`, `claudeReads`, `github.host`,
-`github.rotationTeam`, `github.crewMembers`, `github.mine.ignoreCommenters`,
+`github.crew`, `github.mine.ignoreCommenters`,
 `github.rank.riskPaths`, `slack.groups`,
 `slack.muteAuthors`, `hideOlderThanDays`.
 

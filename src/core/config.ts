@@ -52,6 +52,45 @@ function readConfigFile(path: string, label: string, required: boolean): unknown
   return value;
 }
 
+/** A crew block that is left out, or given as nothing, is the default one: no crew. */
+function withDefaultCrew(merged: unknown, defaults: unknown): unknown {
+  if (!isObject(merged) || !isObject(merged.github) || !isObject(defaults) || !isObject(defaults.github)) return merged;
+  if (merged.github.crew !== null && merged.github.crew !== undefined) return merged;
+  return { ...merged, github: { ...merged.github, crew: defaults.github.crew } };
+}
+
+// Where the crew's settings lived before they were gathered under github.crew.
+const MOVED = { rotationTeam: "crew.rotationTeam", crewMembers: "crew.members", slackSignal: "crew.reviewChannel" };
+
+const isNames = (v: unknown) => Array.isArray(v) && v.every((name) => typeof name === "string");
+
+function crewProblems(github: unknown): string[] {
+  const problems: string[] = [];
+  const shown = (v: unknown) => JSON.stringify(v);
+  const block = isObject(github) ? github : {};
+  for (const [old, now] of Object.entries(MOVED)) {
+    if (old in block) problems.push(`github.${old} has moved to github.${now}`);
+  }
+
+  const crew = block.crew;
+  if (!isObject(crew)) return [...problems, `github.crew must be a block of settings (got ${shown(crew)})`];
+  if (typeof crew.rotationTeam !== "string") {
+    problems.push(`github.crew.rotationTeam must be a GitHub team's name (got ${shown(crew.rotationTeam)})`);
+  }
+  if (!isNames(crew.members)) {
+    problems.push(`github.crew.members must be a list of GitHub usernames (got ${shown(crew.members)})`);
+  }
+  const channel = crew.reviewChannel;
+  if (!isObject(channel)) return [...problems, `github.crew.reviewChannel must be a block of settings (got ${shown(channel)})`];
+  if (typeof channel.channelId !== "string") {
+    problems.push(`github.crew.reviewChannel.channelId must be a Slack channel id (got ${shown(channel.channelId)})`);
+  }
+  if (!isNames(channel.skipReactions)) {
+    problems.push(`github.crew.reviewChannel.skipReactions must be a list of reaction names (got ${shown(channel.skipReactions)})`);
+  }
+  return problems;
+}
+
 function problemsIn(config: Config): string[] {
   const problems: string[] = [];
   const shown = (v: unknown) => JSON.stringify(v);
@@ -98,10 +137,7 @@ function problemsIn(config: Config): string[] {
     }
   }
 
-  const crew: unknown = config.github?.crewMembers;
-  if (!Array.isArray(crew) || !crew.every((name) => typeof name === "string")) {
-    problems.push(`github.crewMembers must be a list of GitHub usernames (got ${shown(crew)})`);
-  }
+  problems.push(...crewProblems(config.github));
 
   if (typeof config.slack?.teamId !== "string") {
     problems.push(`slack.teamId must be a string (got ${shown(config.slack?.teamId)})`);
@@ -151,7 +187,7 @@ export function loadConfig(root: string): Config {
   const defaults = readConfigFile(join(root, "config", "defaults.yaml"), "config/defaults.yaml", true);
   const local = readConfigFile(join(root, "config", "local.yaml"), "config/local.yaml", false);
 
-  const config = deepMerge(defaults, local) as Config;
+  const config = withDefaultCrew(deepMerge(defaults, local), defaults) as Config;
   const problems = problemsIn(config);
   if (problems.length > 0) {
     throw new ConfigError(`config problems:\n${problems.map((p) => `- ${p}`).join("\n")}`);

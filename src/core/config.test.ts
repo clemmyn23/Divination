@@ -39,11 +39,39 @@ test("inboxStaleAfterMinutes defaults to twelve hours and must be a positive num
   assert.throws(() => loadConfig(tempRoot({ inboxStaleAfterMinutes: "720" })), /inboxStaleAfterMinutes/);
 });
 
-test("crew members default to none and must be a list of GitHub usernames", () => {
-  assert.deepEqual(loadConfig(tempRoot()).github.crewMembers, []);
-  assert.deepEqual(loadConfig(tempRoot({ github: { crewMembers: ["sha", "kit"] } })).github.crewMembers, ["sha", "kit"]);
-  assert.throws(() => loadConfig(tempRoot({ github: { crewMembers: "sha" } })), /github\.crewMembers/);
-  assert.throws(() => loadConfig(tempRoot({ github: { crewMembers: ["sha", 7] } })), /github\.crewMembers/);
+const NO_CREW = { rotationTeam: "", members: [], reviewChannel: { channelId: "", skipReactions: ["octagonal_sign", "eyes"] } };
+
+test("the review crew is one block, and by default there is no crew", () => {
+  assert.deepEqual(loadConfig(tempRoot()).github.crew, NO_CREW);
+});
+
+test("the crew block is optional: left out, emptied or set to nothing all mean no crew", () => {
+  assert.deepEqual(loadConfig(tempRoot({ github: { host: "git.example.com" } })).github.crew, NO_CREW);
+  assert.deepEqual(loadConfig(tempRoot({ github: { crew: {} } })).github.crew, NO_CREW);
+  assert.deepEqual(loadConfig(tempRoot({ github: { crew: null } })).github.crew, NO_CREW);
+  assert.deepEqual(loadConfig(tempRoot("github:\n  crew:\n")).github.crew, NO_CREW);
+});
+
+test("a crew may be given in part", () => {
+  const crew = loadConfig(tempRoot({ github: { crew: { members: ["sha", "kit"] } } })).github.crew;
+  assert.deepEqual(crew, { ...NO_CREW, members: ["sha", "kit"] });
+  const whole = { rotationTeam: "frontend-crew", members: ["ana"], reviewChannel: { channelId: "C1", skipReactions: ["no_entry"] } };
+  assert.deepEqual(loadConfig(tempRoot({ github: { crew: whole } })).github.crew, whole);
+});
+
+test("the crew's settings are checked", () => {
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: "javascript" } })), /github\.crew must be a block of settings/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: { members: "sha" } } })), /github\.crew\.members/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: { members: ["sha", 7] } } })), /github\.crew\.members/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: { rotationTeam: 7 } } })), /github\.crew\.rotationTeam/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: { reviewChannel: { channelId: 7 } } } })), /github\.crew\.reviewChannel\.channelId/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crew: { reviewChannel: { skipReactions: "eyes" } } } })), /github\.crew\.reviewChannel\.skipReactions/);
+});
+
+test("a crew setting left at its old place is pointed to its new one", () => {
+  assert.throws(() => loadConfig(tempRoot({ github: { rotationTeam: "frontend-crew" } })), /github\.rotationTeam has moved to github\.crew\.rotationTeam/);
+  assert.throws(() => loadConfig(tempRoot({ github: { crewMembers: ["sha"] } })), /github\.crewMembers has moved to github\.crew\.members/);
+  assert.throws(() => loadConfig(tempRoot({ github: { slackSignal: { channelId: "C1" } } })), /github\.slackSignal has moved to github\.crew\.reviewChannel/);
 });
 
 test("muted Slack authors default to none and must be a list of names", () => {
@@ -64,14 +92,15 @@ me:
   name: Sam   # shown in the headline
 sources: [github]
 github:
-  crewMembers:
-    - ana   # captain
-    - kit
+  crew:
+    members:
+      - ana   # captain
+      - kit
 `),
   );
   assert.equal(cfg.me.name, "Sam");
   assert.deepEqual(cfg.sources, ["github"]);
-  assert.deepEqual(cfg.github.crewMembers, ["ana", "kit"]);
+  assert.deepEqual(cfg.github.crew.members, ["ana", "kit"]);
 });
 
 test("a clock time written without quotes stays text", () => {

@@ -40,7 +40,7 @@ test("only listed reactions count, several people are all named, and one reply r
 // ---- collectGithub ----
 
 const SIGNAL_LOCAL = {
-  github: { host: HOST, slackSignal: { channelId: "CREVIEW" } },
+  github: { host: HOST, crew: { reviewChannel: { channelId: "CREVIEW" } } },
   slack: { workspaceUrl: "https://w.slack.com", userId: "ME" },
 };
 const token: Secrets = { get: async (name) => (name === "slack" ? "xoxp-sekrit" : undefined) };

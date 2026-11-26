@@ -90,7 +90,7 @@ function fromSweep(ctx: Context): Pick<ReviewPosts, "posts" | "names"> {
  * a nicety, and the queue must still load without them.
  */
 export async function reviewPosts(ctx: Context): Promise<ReviewPosts> {
-  const { channelId } = ctx.config.github.slackSignal;
+  const { channelId } = ctx.config.github.crew.reviewChannel;
   const linkFor = (ts: string) => permalink(ctx.config.slack.workspaceUrl, channelId, ts);
   const none: ReviewPosts = { posts: [], names: {}, linkFor };
   if (!channelId) return none;
