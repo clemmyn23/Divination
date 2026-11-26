@@ -129,6 +129,8 @@ export type Exec = (
   opts?: {
     input?: string;
     env?: Record<string, string>;
+    /** The folder the program runs in. The tool's own folder when left out. */
+    cwd?: string;
     timeoutMs?: number;
     /** Called with each piece of output as it arrives. The whole output is still returned at the end. */
     onStdout?: (chunk: string) => void;

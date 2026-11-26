@@ -392,3 +392,59 @@ test("the doctor's Claude check says whether the CLI is signed in, and how to fi
   const missing = await check({ code: 127 });
   assert.deepEqual([missing.ok, missing.detail], [false, "the claude CLI could not be run"]);
 });
+
+test("a run can be given a folder, its own budget and restricted mode", async () => {
+  const { ctx, exec } = withClaude(fixture("claude-output.json"));
+  await runClaude(ctx, { ...req, cwd: "/work/tree", maxBudgetUsd: 3, budgetSetting: "github.fix.maxBudgetUsd", restricted: true, allowedTools: ["Read", "Edit"] });
+  const args = exec.calls[0]!;
+  assert.equal(exec.opts[0]!.cwd, "/work/tree");
+  assert.ok(args.includes("--restricted"));
+  assert.equal(args[args.indexOf("--max-budget-usd") + 1], "3");
+  assert.deepEqual(args.slice(-3), ["--allowedTools", "Read", "Edit"]); // still last
+});
+
+test("without those the run is as before: no folder, the usual budget, not restricted", async () => {
+  const { ctx, exec } = withClaude(fixture("claude-output.json"));
+  await runClaude(ctx, req);
+  assert.ok(!exec.calls[0]!.includes("--restricted"));
+  assert.equal(exec.calls[0]![exec.calls[0]!.indexOf("--max-budget-usd") + 1], "0.25");
+  assert.equal(exec.opts[0]!.cwd, undefined);
+});
+
+test("a run stopped at its own budget names that budget's setting", async () => {
+  const stopped = JSON.stringify({ type: "result", subtype: "error_max_budget_usd", is_error: true, total_cost_usd: 3.01, num_turns: 30 });
+  const ctx = contextWith({}, { exec: fakeExec({ "claude -p": { stdout: stopped, code: 1 } }) });
+  await assert.rejects(runClaude(ctx, { ...req, maxBudgetUsd: 3, budgetSetting: "github.fix.maxBudgetUsd" }), {
+    message: "claude failed: stopped at the $3.00 spending limit for one call (github.fix.maxBudgetUsd)",
+  });
+});
+
+test("a quiet run reports a tool by its file path only, and none of what Claude writes", async () => {
+  const stdout = events(
+    INIT,
+    delta("The log says line 223 "),
+    said({ type: "text", text: "The log says line 223 is wrong." }),
+    said({ type: "tool_use", id: "t1", name: "Edit", input: { file_path: "src/Writer.cs", old_string: "private secret body", new_string: "other secret body" } }),
+    said({ type: "tool_use", id: "t2", name: "Grep", input: { pattern: "secret pattern", path: "src" } }),
+    said({ type: "tool_use", id: "t3", name: "Glob", input: { pattern: "**/*.cs" } }),
+    RESULT,
+  );
+  const { ctx, logged, during } = watched({ stdout });
+  await runClaude(ctx, { ...req, quiet: true });
+  assert.deepEqual(during(), [
+    ["llm-tool", { name: "Edit", detail: "src/Writer.cs" }],
+    ["llm-tool", { name: "Grep", detail: "src" }],
+    ["llm-tool", { name: "Glob", detail: "" }],
+  ]);
+  const all = JSON.stringify(logged);
+  assert.ok(!all.includes("secret") && !all.includes("line 223"));
+});
+
+test("the cost is reported when the run ends, whether it worked or not", async () => {
+  const seen: { costUsd?: number }[] = [];
+  const good = events({ ...RESULT, total_cost_usd: 0.42 });
+  await runClaude(withClaude(good).ctx, { ...req, onUsage: (u) => seen.push(u) });
+  const bad = JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, total_cost_usd: 0.07 });
+  await assert.rejects(runClaude(withClaude(bad, 1).ctx, { ...req, onUsage: (u) => seen.push(u) }));
+  assert.deepEqual(seen, [{ costUsd: 0.42 }, { costUsd: 0.07 }]);
+});

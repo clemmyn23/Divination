@@ -16,6 +16,7 @@ export const realExec: Exec = (cmd, args, opts = {}) =>
       args,
       {
         env: { ...process.env, ...opts.env },
+        ...(opts.cwd ? { cwd: opts.cwd } : {}),
         timeout: opts.timeoutMs ?? 0,
         maxBuffer: 64 * 1024 * 1024,
         encoding: "utf8",

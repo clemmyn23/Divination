@@ -26,6 +26,24 @@ export interface ClaudeRequest {
   connectors?: boolean;
   env?: Record<string, string>;
   timeoutMs?: number;
+  /** The folder the run works in. */
+  cwd?: string;
+  /** The most this run may spend, in place of `enrich.maxBudgetUsd`, and the setting to name when it is reached. */
+  maxBudgetUsd?: number;
+  budgetSetting?: string;
+  /**
+   * Run in the CLI's restricted mode, which among other things confines the file tools to
+   * the run's folder.
+   */
+  restricted?: boolean;
+  /**
+   * For a run that works on files nobody should see in a log: nothing Claude writes is
+   * reported while it works, and a tool is reported by the file path it was given and
+   * nothing else of its input.
+   */
+  quiet?: boolean;
+  /** Called once when the run ends, whether it worked or not. */
+  onUsage?: (usage: { costUsd?: number }) => void;
 }
 
 /** The most of a tool's input that is kept in the log. */
@@ -65,7 +83,12 @@ interface CliEvent {
 const cut = (text: string, max: number) => (text.length <= max ? text : `${text.slice(0, max - 1)}…`);
 
 /** A tool call in a few words: the command for Bash, otherwise its input as JSON, cut short. */
-function toolDetail(name: string, input: unknown): string {
+function toolDetail(name: string, input: unknown, quiet = false): string {
+  if (quiet) {
+    const given = input as { file_path?: unknown; path?: unknown } | null;
+    const path = typeof given?.file_path === "string" ? given.file_path : typeof given?.path === "string" ? given.path : "";
+    return cut(path, TOOL_DETAIL_MAX);
+  }
   const command = (input as { command?: unknown } | null)?.command;
   return cut(name === "Bash" && typeof command === "string" ? command : (JSON.stringify(input) ?? ""), TOOL_DETAIL_MAX);
 }
@@ -76,7 +99,7 @@ function toolDetail(name: string, input: unknown): string {
  * piece of a new passage) and `llm-tool` for each tool it uses. What a tool returned is
  * never reported: that is the gathered data itself.
  */
-function watchStream(log: Context["log"]): (chunk: string) => void {
+function watchStream(log: Context["log"], quiet = false): (chunk: string) => void {
   let buffer = "";
   let midText = false; // some of the current message's text has already been reported, piece by piece
 
@@ -97,7 +120,7 @@ function watchStream(log: Context["log"]): (chunk: string) => void {
     }
     if (event.type === "stream_event") {
       const delta = event.event?.delta;
-      if (event.event?.type === "content_block_delta" && delta?.type === "text_delta" && delta.text) {
+      if (!quiet && event.event?.type === "content_block_delta" && delta?.type === "text_delta" && delta.text) {
         log("llm-text", midText ? { text: delta.text } : { text: delta.text, start: true });
         midText = true;
       }
@@ -106,8 +129,8 @@ function watchStream(log: Context["log"]): (chunk: string) => void {
     if (event.type !== "assistant" || event.is_api_error_message) return;
     for (const block of event.message?.content ?? []) {
       // Text that already arrived in pieces is not repeated when the whole message follows.
-      if (block.type === "text" && block.text && !midText) log("llm-text", { text: block.text, start: true });
-      if (block.type === "tool_use" && block.name) log("llm-tool", { name: block.name, detail: toolDetail(block.name, block.input) });
+      if (block.type === "text" && block.text && !midText && !quiet) log("llm-text", { text: block.text, start: true });
+      if (block.type === "tool_use" && block.name) log("llm-tool", { name: block.name, detail: toolDetail(block.name, block.input, quiet) });
     }
     midText = false;
   };
@@ -198,12 +221,12 @@ async function serversToShutOut(ctx: Context, tools: string[]): Promise<string[]
  * Why a run failed, in the most useful words there are: the CLI's own, else that it ran
  * into the spending limit, else its reason code, else what it wrote as an error.
  */
-function whyItFailed(out: CliOutput | undefined, res: { code: number; stderr: string }, budgetUsd: number): string {
+function whyItFailed(out: CliOutput | undefined, res: { code: number; stderr: string }, budgetUsd: number, setting: string): string {
   if (typeof out?.result === "string" && out.result !== "") return out.result;
   // A run that reaches the limit is stopped with no answer and no words of its own.
   const spent = typeof out?.total_cost_usd === "number" ? out.total_cost_usd : 0;
   if (out?.subtype === "error_max_budget_usd" || (out !== undefined && spent >= budgetUsd)) {
-    return `stopped at the $${budgetUsd.toFixed(2)} spending limit for one call (enrich.maxBudgetUsd)`;
+    return `stopped at the $${budgetUsd.toFixed(2)} spending limit for one call (${setting})`;
   }
   if (typeof out?.subtype === "string" && out.subtype !== "" && out.subtype !== "success") return out.subtype;
   return res.stderr.trim().slice(0, 200) || (res.code !== 0 ? `exit code ${res.code}` : "its output had no result");
@@ -220,12 +243,15 @@ function jsonFromText(text: string): unknown {
  *
  * This is the only place the tool starts an LLM. It is reached from `enrichOnDemand` (a
  * sparkle button or the `enrich` command) and from a source's `feed` (Refresh now, when
- * `claudeReads.onRefresh` is on). The run keeps no session, is capped by
- * `enrich.maxBudgetUsd`, may use only the tools named in `allowedTools`, and loads no
- * MCP servers unless `connectors` is set. What it
- * writes and the tools it uses are reported through `ctx.log` while it runs.
+ * `claudeReads.onRefresh` is on). A PR fix reaches it too, with a folder to work in, its
+ * own budget and restricted mode. The run keeps no session, is capped by
+ * `enrich.maxBudgetUsd` unless it brings its own budget, may use only the tools named in
+ * `allowedTools`, and loads no MCP servers unless `connectors` is set. What it writes and
+ * the tools it uses are reported through `ctx.log` while it runs, unless it is `quiet`.
  */
 export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unknown> {
+  const budgetUsd = req.maxBudgetUsd ?? ctx.config.enrich.maxBudgetUsd;
+  const budgetSetting = req.budgetSetting ?? "enrich.maxBudgetUsd";
   const args = [
     "-p",
     readFileSync(req.promptFile, "utf8") + (req.note ? `\n\n${req.note}` : ""),
@@ -241,7 +267,8 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
     ...(req.connectors ? [] : ["--strict-mcp-config"]),
     "--no-session-persistence",
     "--max-budget-usd",
-    String(ctx.config.enrich.maxBudgetUsd),
+    String(budgetUsd),
+    ...(req.restricted ? ["--restricted"] : []),
     // No prompt here uses a skill, and the list of them is read on every turn.
     "--disable-slash-commands",
   ];
@@ -289,14 +316,15 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
       input: req.input,
       env,
       timeoutMs: req.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-      onStdout: watchStream(ctx.log),
+      ...(req.cwd ? { cwd: req.cwd } : {}),
+      onStdout: watchStream(ctx.log, req.quiet),
     });
 
     if (res.code === TIMED_OUT) throw new Error("claude failed: timed out");
 
     out = resultOf(res.stdout);
     if (res.code !== 0 || out === undefined || out.is_error === true) {
-      throw new Error(`claude failed: ${whyItFailed(out, res, ctx.config.enrich.maxBudgetUsd)}`);
+      throw new Error(`claude failed: ${whyItFailed(out, res, budgetUsd, budgetSetting)}`);
     }
 
     let answer: unknown;
@@ -312,6 +340,8 @@ export async function runClaude(ctx: Context, req: ClaudeRequest): Promise<unkno
   } catch (e) {
     ctx.log("llm", { ok: false, ms: elapsed(), model: req.model, ...usage(), error: e instanceof Error ? e.message : String(e) });
     throw e;
+  } finally {
+    req.onUsage?.(typeof out?.total_cost_usd === "number" ? { costUsd: out.total_cost_usd } : {});
   }
 }
 
