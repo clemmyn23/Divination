@@ -38,11 +38,12 @@ const DRAFT = mine(11, { on: "draft", reasons: [] }, { ci: "fail" });
 
 const DATA: GithubData = { login: "me", prs: [], mine: [READY, BROKEN, WAITING, SECOND_LOOK, DRAFT] };
 
-test("my PRs are a sky panel beside the review queue", () => {
+test("my PRs are a sky panel that shares a column with the review queue, below it", () => {
   const panels = githubPanels(DATA, view);
+  // Two short panels in a row fill one column, the first on top.
   assert.deepEqual(panels.map((p) => [p.id, p.title, p.tint, p.size]), [
-    ["prs", "Review queue", "blush", undefined],
-    ["my-prs", "My PRs", "sky", undefined],
+    ["prs", "Review queue", "blush", "short"],
+    ["my-prs", "My PRs", "sky", "short"],
   ]);
   assert.equal(panels[1]!.html, myPrsPanel(DATA, view).html);
 });

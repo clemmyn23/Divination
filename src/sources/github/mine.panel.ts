@@ -64,5 +64,5 @@ export function myPrsPanel(data: GithubData, view: View): Panel {
   if (done.length > 0) groups.push(doneAccordion(done.length, list(done, view)));
 
   const html = groups.length > 0 ? groups.join("\n") : '<p class="quiet">No open PRs of yours.</p>';
-  return { id: "my-prs", title: "My PRs", tint: "sky", html };
+  return { id: "my-prs", title: "My PRs", tint: "sky", size: "short", html };
 }

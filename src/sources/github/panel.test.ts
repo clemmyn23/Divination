@@ -51,9 +51,9 @@ test("panel groups PRs and shows review drafts with copy buttons", () => {
   assert.ok(githubPanels(DATA, view)[0]!.html.includes('<button data-enrich="pr-review" data-key="o/r#1@aaa111">Draft review</button>'));
 });
 
-test("the first panel is a blush one called the review queue", () => {
+test("the first panel is a short blush one called the review queue", () => {
   const [queue] = githubPanels(DATA, view);
-  assert.deepEqual([queue!.id, queue!.title, queue!.tint, queue!.size], ["prs", "Review queue", "blush", undefined]);
+  assert.deepEqual([queue!.id, queue!.title, queue!.tint, queue!.size], ["prs", "Review queue", "blush", "short"]);
 });
 
 test("each PR is a title and one meta line", () => {

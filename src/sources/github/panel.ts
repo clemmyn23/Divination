@@ -97,7 +97,8 @@ ${meta(pr)}${extra}${tick(key, isDone(key, view))}</li>`;
 /**
  * The review queue: PRs grouped by what to do with them, one title and one meta line each.
  * PRs opened longer ago than `hideOlderThanDays` are folded into one accordion at the end,
- * and PRs ticked off by hand into another. My own PRs follow in a panel of their own.
+ * and PRs ticked off by hand into another. My own PRs follow in a panel of their own;
+ * both are short, so the two share a column with the queue on top.
  */
 export function githubPanels(data: GithubData, view: View): Panel[] {
   const done = data.prs.filter((pr) => isDone(prDoneKey(pr), view));
@@ -123,5 +124,5 @@ ${prs.map((pr) => item(pr, view)).join("\n")}
   }
 
   const html = groups.length > 0 ? groups.join("\n") : '<p class="quiet">No reviews waiting.</p>';
-  return [{ id: "prs", title: "Review queue", tint: "blush", html }, myPrsPanel(data, view)];
+  return [{ id: "prs", title: "Review queue", tint: "blush", size: "short", html }, myPrsPanel(data, view)];
 }
