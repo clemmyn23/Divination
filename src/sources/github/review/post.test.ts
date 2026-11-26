@@ -19,9 +19,17 @@ const DRAFT = {
 };
 const PATCH = "@@ -1,3 +1,4 @@\n one\n+two\n three\n four";
 
-function setup(over: { pull?: object; draft?: unknown; review?: (review: NewReview) => Promise<{ html_url?: string }> } = {}) {
+function setup(over: { pull?: object; draft?: unknown; review?: (review: NewReview) => Promise<{ html_url?: string }>; logBroken?: boolean } = {}) {
   const logged: { event: string; fields?: object }[] = [];
-  const ctx = contextWith({ github: { host: HOST } }, { log: (event, fields) => logged.push({ event, ...(fields ? { fields } : {}) }) });
+  const ctx = contextWith(
+    { github: { host: HOST } },
+    {
+      log: (event, fields) => {
+        if (over.logBroken) throw new Error("ENOSPC: the log could not be written");
+        logged.push({ event, ...(fields ? { fields } : {}) });
+      },
+    },
+  );
   if (over.draft !== null) cachePut(ctx, "pr-review", hashOf(KEY), over.draft ?? DRAFT);
   const posted: { repo: string; number: number; review: NewReview }[] = [];
   const asked: string[] = [];
@@ -40,7 +48,8 @@ function setup(over: { pull?: object; draft?: unknown; review?: (review: NewRevi
         return over.review ? over.review(review) : { html_url: `https://${HOST}/o/r/pull/1#pullrequestreview-9` };
       },
     }) as unknown as Github;
-  const post = (req: Partial<PostRequest>) => postReview(ctx, { key: KEY, event: "COMMENT", message: "", notes: [], ...req }, { github });
+  const post = (req: Partial<PostRequest>) =>
+    postReview(ctx, { key: KEY, draft: hashOf(over.draft ?? DRAFT), event: "COMMENT", message: "", notes: [], ...req }, { github });
   return { ctx, post, posted, asked, logged };
 }
 
@@ -110,6 +119,19 @@ test("a stored draft in the wrong shape is no draft", async () => {
   assert.equal(posted.length, 0);
 });
 
+test("a draft that was rerun since its dialog was drawn is refused: its notes are not the ones I ticked", async () => {
+  const { post, posted, asked } = setup();
+  await assert.rejects(post({ draft: "0123456789abcdef", notes: [{ index: 0, text: "x" }] }), (e: unknown) => e instanceof Refusal && /rerun/.test(e.message));
+  assert.deepEqual(asked, []);
+  assert.equal(posted.length, 0);
+});
+
+test("once the review is on the PR, a log that cannot be written does not make the post look failed", async () => {
+  const { post, posted } = setup({ logBroken: true });
+  assert.deepEqual(await post({ message: "lgtm" }), { comments: 0, inBody: 0, url: `https://${HOST}/o/r/pull/1#pullrequestreview-9` });
+  assert.equal(posted.length, 1);
+});
+
 test("a note the draft does not have is refused before GitHub is asked anything", async () => {
   const { post, posted, asked } = setup();
   await assert.rejects(post({ notes: [{ index: 3, text: "x" }] }), (e: unknown) => e instanceof Refusal && /no note 4/.test(e.message));
@@ -168,17 +190,21 @@ test("a link from GitHub that does not point at the configured host is dropped",
 
 // ---- Reading the request ----
 
-const GOOD = { key: KEY, event: "APPROVE", message: "lgtm", summary: "Fine.", notes: [{ index: 0, text: "x" }] };
+const PRINT = "0123456789abcdef";
+const GOOD = { key: KEY, draft: PRINT, event: "APPROVE", message: "lgtm", summary: "Fine.", notes: [{ index: 0, text: "x" }] };
 
 test("a well-formed request is read as it is", () => {
   assert.deepEqual(parsePost(GOOD), GOOD);
-  assert.deepEqual(parsePost({ key: KEY, event: "COMMENT" }), { key: KEY, event: "COMMENT", message: "", notes: [] });
+  assert.deepEqual(parsePost({ key: KEY, draft: PRINT, event: "COMMENT" }), { key: KEY, draft: PRINT, event: "COMMENT", message: "", notes: [] });
 });
 
 test("a malformed request is described, not read", () => {
   const bad: [object, RegExp][] = [
     [{ ...GOOD, key: 7 }, /"key"/],
     [{ ...GOOD, key: "o/r#1" }, /"key"/],
+    [{ ...GOOD, draft: undefined }, /"draft"/],
+    [{ ...GOOD, draft: "print" }, /"draft"/],
+    [{ ...GOOD, draft: 7 }, /"draft"/],
     [{ ...GOOD, event: "MERGE" }, /"event"/],
     [{ ...GOOD, event: "approve" }, /"event"/],
     [{ ...GOOD, message: 7 }, /"message"/],

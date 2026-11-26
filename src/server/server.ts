@@ -3,6 +3,7 @@ import { existsSync, statSync } from "node:fs";
 import { createServer } from "node:http";
 import { tick } from "../cli/commands/tick.ts";
 import { DONE_KEY_MAX, setDone } from "../core/done.ts";
+import { HttpError } from "../core/http.ts";
 import { readEnvelope, transportOf } from "../core/pipeline.ts";
 import type { Context, Source } from "../core/types.ts";
 import { enrichOnDemand } from "../enrich/on-demand.ts";
@@ -128,6 +129,9 @@ export function createApp(
   // The fix that is running, if one is: which PR it is on, and whether a Fix all has been asked to stop.
   let fixing: FixProgress | null = null;
   let stopping = false;
+  // Reviews on their way to GitHub. A post is not a job, but it is work in hand: a server
+  // stopped in the middle of one would leave the page not knowing whether it went.
+  let posting = 0;
   // A fix that was killed with the server leaves its worktree behind. Nothing waits on this.
   void sweepWorktrees(ctx.exec, Object.values(ctx.config.github.fix.clones), workRoot(ctx));
   const feed = createFeeder();
@@ -296,22 +300,41 @@ export function createApp(
       case REVIEW_PATH: {
         const request = parsePost(fields);
         if (typeof request === "string") return refuse(400, request);
+        let posted: Awaited<ReturnType<typeof postReview>>;
+        posting++;
         try {
-          const posted = await (deps.post ?? postReview)(ctx, request);
-          renderSite(ctx, sources); // the page file changes, so open pages show that it was posted
-          return json(200, posted);
+          posted = await (deps.post ?? postReview)(ctx, request);
         } catch (e) {
           const error = (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
           if (e instanceof Refusal) return refuse(409, error);
-          ctx.log("review-post-failed", { key: request.key.split("@")[0], error });
+          // GitHub's answer is shown in the dialog. The log gets only its status: an answer
+          // may quote what it was sent, and a review's words are never logged.
+          try {
+            ctx.log("review-post-failed", { key: request.key.split("@")[0], error: e instanceof HttpError ? `GitHub answered ${e.status}` : error });
+          } catch {
+            // The log could not be written; the answer below says what happened.
+          }
           return refuse(502, error);
+        } finally {
+          posting--;
         }
+        // The review is on the PR. A page that cannot be redrawn must not turn that into a
+        // failure, which would invite a second press and a second review.
+        try {
+          renderSite(ctx, sources); // the page file changes, so open pages show that it was posted
+        } catch {
+          // The next refresh redraws it.
+        }
+        return json(200, posted);
       }
     }
     return refuse(404, "not found");
   }
 
-  return { handle, live, status };
+  /** Whether anything is in hand that a restart should wait for: a job, or a review being posted. */
+  const busy = () => jobs.current() !== null || posting > 0;
+
+  return { handle, live, status, busy };
 }
 
 /** Put the app on `127.0.0.1` only. Resolves once it is listening. */

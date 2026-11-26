@@ -78,8 +78,8 @@ const KINDS: [string, string][] = [
 /** One tickable entry of the dialog: a checkbox, where it goes, and its text to edit. */
 function entry(pick: string, where: string, text: string, label: string, copy: boolean): string {
   return `<div class="finding">
-<label class="pick"><input type="checkbox" data-pick="${esc(pick)}"> <span class="where">${esc(where)}</span></label>
-<textarea data-text rows="${copy ? 4 : 3}" aria-label="${esc(label)}">${esc(text)}</textarea>${copy ? '\n<button type="button" data-copy-text>Copy</button>' : ""}
+<label class="pick"><input type="checkbox" autocomplete="off" data-pick="${esc(pick)}"> <span class="where">${esc(where)}</span></label>
+<textarea data-text autocomplete="off" rows="${copy ? 4 : 3}" aria-label="${esc(label)}">${esc(text)}</textarea>${copy ? '\n<button type="button" data-copy-text>Copy</button>' : ""}
 </div>`;
 }
 
@@ -88,14 +88,16 @@ function entry(pick: string, where: string, text: string, label: string, copy: b
  * my own message, the kind of review, and the button that posts what is ticked to the PR.
  * Nothing is ticked to start, and Comment is the kind selected whatever the draft says:
  * an approval or a change request only goes out when I pick it. `data-draft` is a
- * fingerprint of the draft, so the page never puts one draft's ticks on another.
+ * fingerprint of the draft, so the page never puts one draft's ticks on another and the
+ * server never posts a note from a draft other than the one on screen. The boxes are
+ * `autocomplete="off"` so that the browser does not refill them after a reload either.
  */
 function dialogHtml(pr: PullRequest, review: Review, posted: string): string {
   const key = reviewKey(pr);
   const count = review.findings.length;
   const notes = review.findings.map((f, i) => entry(String(i), `${f.file}:${f.line} · ${f.severity}`, f.comment, `Note on ${f.file}:${f.line}`, true));
   const kinds = KINDS.map(
-    ([value, label]) => `<label><input type="radio" name="event:${esc(key)}" value="${value}"${value === "COMMENT" ? " checked" : ""}> ${label}</label>`,
+    ([value, label]) => `<label><input type="radio" autocomplete="off" name="event:${esc(key)}" value="${value}"${value === "COMMENT" ? " checked" : ""}> ${label}</label>`,
   );
   return `<dialog class="review-dialog" data-review="${esc(key)}" data-draft="${hashOf(review)}" aria-label="Review of ${esc(pr.title)}">
 <h2>${link(pr.title, pr.url)}</h2>
@@ -104,7 +106,7 @@ function dialogHtml(pr: PullRequest, review: Review, posted: string): string {
 ${[entry("summary", "Summary · goes in the overall comment", review.summary, "Summary", false), ...notes].join("\n")}
 </div>
 <div class="review-post">
-<textarea data-message rows="2" placeholder="Your message. It goes first." aria-label="Your message"></textarea>
+<textarea data-message autocomplete="off" rows="2" placeholder="Your message. It goes first." aria-label="Your message"></textarea>
 <div class="review-kind" role="radiogroup" aria-label="Kind of review">
 ${kinds.join("\n")}
 </div>

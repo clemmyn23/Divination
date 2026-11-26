@@ -76,3 +76,8 @@ test("parts that are missing or blank leave no gap", () => {
 test("a file name with a backtick in it cannot break out of its label", () => {
   assert.equal(reviewBody("", undefined, [{ file: "a`b", line: "1", text: "x" }]), "**`a'b:1`**\n\nx");
 });
+
+test("a blank context line that arrives with nothing on it still counts as a line", () => {
+  const lines = rightLines("@@ -1,3 +1,4 @@\n one\n\n+three\n four\n");
+  assert.deepEqual([...lines.keys()], [1, 2, 3, 4]); // the empty row is line 2; the one after the last line break is not a line
+});

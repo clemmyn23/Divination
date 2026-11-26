@@ -299,10 +299,10 @@ test("a drafted review has a button that opens it in a dialog, between the folde
 
 test("the dialog lists the summary and every note, each with a checkbox and its text to edit", () => {
   const html = drafted();
-  assert.equal((html.match(/<input type="checkbox" data-pick=/g) ?? []).length, 3);
-  assert.ok(html.includes('<input type="checkbox" data-pick="summary">'));
-  assert.ok(html.includes('<input type="checkbox" data-pick="0">'));
-  assert.ok(html.includes('<input type="checkbox" data-pick="1">'));
+  assert.equal((html.match(/<input type="checkbox" autocomplete="off" data-pick=/g) ?? []).length, 3);
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="summary">'));
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="0">'));
+  assert.ok(html.includes('<input type="checkbox" autocomplete="off" data-pick="1">'));
   assert.match(html, /<textarea data-text[^>]*>Adds an avatar menu\.<\/textarea>/);
   assert.match(html, /<textarea data-text[^>]*>The handler is never removed\.<\/textarea>/);
   assert.match(html, /<textarea data-text[^>]*>Rename `x`\.<\/textarea>/);
@@ -315,9 +315,9 @@ test("nothing is ticked to start, and Comment is the kind selected whatever the 
   const html = drafted();
   assert.ok(html.includes("Draft says: request changes"));
   assert.equal((html.match(/ checked/g) ?? []).length, 1);
-  assert.ok(html.includes('<input type="radio" name="event:o/r#1@aaa111" value="COMMENT" checked>'));
-  assert.ok(html.includes('<input type="radio" name="event:o/r#1@aaa111" value="APPROVE">'));
-  assert.ok(html.includes('<input type="radio" name="event:o/r#1@aaa111" value="REQUEST_CHANGES">'));
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="COMMENT" checked>'));
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="APPROVE">'));
+  assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="REQUEST_CHANGES">'));
 });
 
 test("beside the Post button is a box for my own message, and Post starts switched off", () => {
@@ -351,4 +351,11 @@ test("a posted review says when it was posted, under the draft and in its dialog
   assert.ok(!drafted().includes("Posted"));
   // A post at another commit is not this draft's.
   assert.ok(!drafted(DRAFT, { [postedKey("o/r#1@old000")]: NOW }).includes("Posted"));
+});
+
+test("the browser is told not to refill the dialog's boxes itself: only the page's own record does", () => {
+  const html = drafted();
+  const inputs = html.match(/<(?:input|textarea) [^>]*>/g) ?? [];
+  assert.equal(inputs.length, 3 + 3 + 3 + 1); // three ticks, three texts, three kinds, my message
+  for (const input of inputs) assert.ok(input.includes('autocomplete="off"'), input);
 });

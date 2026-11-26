@@ -6,6 +6,7 @@ import { beforeEach, test } from "node:test";
 import { contextWith, fakeExec, fakeSource, fakeTimers, settle, sourceWith } from "../../test/helpers.ts";
 import type { Context, EnrichItem, Enricher } from "../core/types.ts";
 import { readDone } from "../core/done.ts";
+import { HttpError } from "../core/http.ts";
 import { type PostRequest, type PostResult, Refusal } from "../sources/github/review/post.ts";
 import { createApp } from "./server.ts";
 
@@ -502,7 +503,17 @@ test("worktrees left by a killed run are swept when the server starts", async ()
 function reviewApp(answer: () => Promise<PostResult> = async () => ({ comments: 2, inBody: 1, url: "https://git.example.com/o/r/pull/1#pullrequestreview-9" })) {
   const asked: PostRequest[] = [];
   const logged: string[] = [];
-  const c = contextWith({ sources: ["fake"] }, { exec: fakeExec({}), log: (event) => logged.push(event) });
+  const fields: Record<string, object | undefined> = {}; // what each event was last logged with
+  const c = contextWith(
+    { sources: ["fake"] },
+    {
+      exec: fakeExec({}),
+      log: (event, given) => {
+        logged.push(event);
+        fields[event] = given;
+      },
+    },
+  );
   const slow: Enricher<unknown> = { id: "slow-enricher", items: () => [{ key: "a", hash: "slow-a", input: 1 }], run: () => new Promise(() => {}) };
   const posting = createApp(c, [sourceWith(c, slow)], "tok", fakeTimers(), {
     post: async (_ctx, request) => {
@@ -514,10 +525,10 @@ function reviewApp(answer: () => Promise<PostResult> = async () => ({ comments: 
     const res = await posting.handle(req("POST", "/api/review/post", { body, ...(headers ? { headers } : {}) }));
     return { status: res.status, body: JSON.parse(res.body) };
   };
-  return { ctx: c, app: posting, asked, send, logged };
+  return { ctx: c, app: posting, asked, send, logged, fields };
 }
 
-const REVIEW = { key: "o/r#1@aaa111", event: "APPROVE", message: "lgtm", notes: [{ index: 0, text: "Rename `x`." }] };
+const REVIEW = { key: "o/r#1@aaa111", draft: "0123456789abcdef", event: "APPROVE", message: "lgtm", notes: [{ index: 0, text: "Rename `x`." }] };
 
 test("a press of Post posts that review and answers with what was posted", async () => {
   const r = reviewApp();
@@ -538,7 +549,11 @@ test("a review is not posted without the page's token, or from another host", as
 
 test("a malformed review request is refused and nothing is posted", async () => {
   const r = reviewApp();
-  for (const body of ['{"key":"o/r#1","event":"APPROVE"}', '{"key":"o/r#1@aaa111","event":"MERGE"}', '{"key":"o/r#1@aaa111","event":"COMMENT","notes":[{"index":"0","text":"x"}]}', "{}"]) {
+  for (const body of ['{"key":"o/r#1","draft":"0123456789abcdef","event":"APPROVE"}',
+    '{"key":"o/r#1@aaa111","event":"APPROVE"}',
+    '{"key":"o/r#1@aaa111","draft":"0123456789abcdef","event":"MERGE"}',
+    '{"key":"o/r#1@aaa111","draft":"0123456789abcdef","event":"COMMENT","notes":[{"index":"0","text":"x"}]}',
+    "{}",]) {
     const res = await r.send(body);
     assert.equal(res.status, 400, body);
     assert.equal(typeof res.body.error, "string");
@@ -575,4 +590,39 @@ test("a review can be posted while a refresh or a Claude call is running", async
   await settle();
   assert.notEqual(r.app.status().job, null);
   assert.equal((await r.send(JSON.stringify(REVIEW))).status, 200);
+});
+
+test("what GitHub answered is shown to me but not written to the log: only its status is", async () => {
+  const rejected = reviewApp(async () => {
+    throw new HttpError(422, "https://git.example.com/api/v3/repos/o/r/pulls/1/reviews", '{"message":"the words of my review, echoed back"}');
+  });
+  const res = await rejected.send(JSON.stringify(REVIEW));
+  assert.equal(res.status, 502);
+  assert.match(res.body.error, /echoed back/);
+  assert.deepEqual(rejected.fields["review-post-failed"], { key: "o/r#1", error: "GitHub answered 422" });
+});
+
+test("once the review is on the PR, a page that cannot be redrawn does not make the post look failed", async () => {
+  const r = reviewApp();
+  mkdirSync(r.ctx.paths.site, { recursive: true }); // a folder where the page file goes: it cannot be written
+  const res = await r.send(JSON.stringify(REVIEW));
+  assert.equal(res.status, 200);
+  assert.equal(res.body.comments, 2);
+});
+
+test("a review on its way to GitHub counts as work in hand, so a restart waits for it", async () => {
+  let letGo = () => {};
+  const r = reviewApp(() => new Promise((resolve) => (letGo = () => resolve({ comments: 0, inBody: 0 }))));
+  assert.equal(r.app.busy(), false);
+  const sending = r.send(JSON.stringify(REVIEW));
+  await settle();
+  assert.equal(r.app.busy(), true);
+  assert.equal(r.app.status().job, null); // it is not a job: a refresh can still start
+  letGo();
+  await sending;
+  assert.equal(r.app.busy(), false);
+
+  await r.app.handle(req("POST", "/api/enrich", { body: '{"enricher":"slow-enricher","key":"a"}' }));
+  await settle();
+  assert.equal(r.app.busy(), true); // a running job is work in hand too
 });
