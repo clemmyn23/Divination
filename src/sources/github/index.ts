@@ -1,6 +1,8 @@
 import type { AttentionItem, Check, Context, Source } from "../../core/types.ts";
+import { claudeCheck } from "../../enrich/claude.ts";
 import { createGithub } from "./client.ts";
 import { collectGithub } from "./collect.ts";
+import { checkClone } from "./fix/git.ts";
 import { myDoneKey } from "./mine.panel.ts";
 import { CREW, NEEDS_YOU, githubPanels, prDoneKey } from "./panel.ts";
 import { prReview } from "./review.enricher.ts";
@@ -123,6 +125,34 @@ async function doctor(ctx: Context): Promise<Check[]> {
   } catch (e) {
     checks.push({ name: "api", ok: false, detail: e instanceof Error ? e.message : String(e) });
   }
+  return [...checks, ...(await fixChecks(ctx))];
+}
+
+/** What the Fix button needs, checked only when a clone is named: each clone, the build-log tool and Claude. */
+async function fixChecks(ctx: Context): Promise<Check[]> {
+  const clones = Object.entries(ctx.config.github.fix.clones);
+  if (clones.length === 0) return [];
+  const checks: Check[] = [];
+  for (const [repo, clone] of clones) {
+    try {
+      await checkClone(ctx.exec, clone, ctx.config.github.host, repo);
+      checks.push({ name: `fix clone ${repo}`, ok: true, detail: clone });
+    } catch (e) {
+      checks.push({
+        name: `fix clone ${repo}`,
+        ok: false,
+        detail: e instanceof Error ? e.message : String(e),
+        fix: `set github.fix.clones in config/local.yaml to the path of your clone of ${repo}`,
+      });
+    }
+  }
+  const signedIn = (await ctx.exec("teamcity", ["auth", "status"], { timeoutMs: 15_000 })).code === 0;
+  checks.push(
+    signedIn
+      ? { name: "teamcity", ok: true, detail: "the teamcity tool is signed in" }
+      : { name: "teamcity", ok: false, detail: "the teamcity tool is not signed in, so a fix cannot read build logs", fix: "teamcity auth login" },
+  );
+  checks.push(await claudeCheck(ctx));
   return checks;
 }
 
