@@ -193,6 +193,23 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           );
           break;
 
+        // Posting a review. Which PR, what kind and how many notes: never the words.
+        case "review-post": {
+          const comments = Number(f.comments ?? 0);
+          const inBody = Number(f.inBody ?? 0);
+          const parts = [
+            String(f.event ?? "comment").replaceAll("_", " "),
+            ...(comments > 0 ? [comments === 1 ? "1 comment on a line" : `${comments} comments on lines`] : []),
+            ...(inBody > 0 ? [`${inBody} in the overall comment`] : []),
+          ];
+          say(`Posted a review on ${String(f.key)}: ${parts.join(", ")}`);
+          break;
+        }
+
+        case "review-post-failed":
+          say(`Could not post the review on ${String(f.key)}: ${String(f.error ?? "unknown error")}`, "error");
+          break;
+
         case "llm-start": {
           const tools = Array.isArray(f.tools) && f.tools.length > 0 ? `tools: ${f.tools.join(", ")}` : "no tools";
           say(`Claude (${String(f.model)}) started: ${String(f.prompt)}, ${tools}`);
