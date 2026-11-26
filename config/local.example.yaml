@@ -23,6 +23,11 @@ github:
       - kit
     reviewChannel:
       channelId: C00000003        # where the crew's reviews are asked for
+  # Optional: a Fix button on your own PRs that are failing CI or have merge conflicts.
+  # Name your local clone of each repository you want it for.
+  # fix:
+  #   clones:
+  #     "acme/monolith": /Users/you/code/monolith
 
 slack:
   transport: inbox   # fed by /slack-sweep; "api" needs a Slack app and a token

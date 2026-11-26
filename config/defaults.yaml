@@ -50,6 +50,24 @@ github:
   # GitHub usernames (a review bot that signs in as a person, say).
   mine:
     ignoreCommenters: []
+  # Fixing your own PRs: the Fix button on a PR of yours that is failing CI or has merge
+  # conflicts. Claude edits files in a throwaway worktree of your clone; the tool commits
+  # and pushes to that PR's branch. With no clone named, there is no Fix button.
+  fix:
+    # "owner/repo": the absolute path of your local clone. A repository that is not
+    # listed gets no Fix button.
+    clones: {}
+    model: opus
+    # The most one fix may spend. It has its own limit, apart from enrich.maxBudgetUsd.
+    maxBudgetUsd: 3
+    # How long Claude may work on one fix before it is stopped.
+    timeoutMinutes: 20
+    # Attempts in a row on one PR before the tool hands it back to you.
+    maxAttempts: 2
+    # A fix that changes a path matching one of these is thrown away.
+    neverTouch: [".github/**", ".teamcity/**"]
+    # A fix that changes more files than this is thrown away.
+    maxFiles: 20
   rank:
     # A changed path matching `pattern` adds `weight` to a pull request's rank.
     riskPaths:

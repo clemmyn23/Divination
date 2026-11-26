@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { parse } from "yaml";
 import type { Config } from "./types.ts";
 
@@ -91,6 +91,29 @@ function crewProblems(github: unknown): string[] {
   return problems;
 }
 
+const REPO = /^[\w.-]+\/[\w.-]+$/;
+
+function fixProblems(github: unknown): string[] {
+  const shown = (v: unknown) => JSON.stringify(v);
+  const fix = isObject(github) ? github.fix : undefined;
+  if (!isObject(fix)) return [`github.fix must be a block of settings (got ${shown(fix)})`];
+
+  const problems: string[] = [];
+  const clones = fix.clones;
+  const mapped = isObject(clones) && Object.entries(clones).every(([repo, path]) => REPO.test(repo) && typeof path === "string" && isAbsolute(path));
+  if (!mapped) problems.push(`github.fix.clones must map "owner/repo" to the absolute path of its clone (got ${shown(clones)})`);
+  if (typeof fix.model !== "string" || fix.model === "") problems.push(`github.fix.model must be a model's name (got ${shown(fix.model)})`);
+
+  const above0 = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0;
+  const whole = (v: unknown) => typeof v === "number" && Number.isInteger(v) && v >= 1;
+  if (!above0(fix.maxBudgetUsd)) problems.push(`github.fix.maxBudgetUsd must be a number above 0 (got ${shown(fix.maxBudgetUsd)})`);
+  if (!above0(fix.timeoutMinutes)) problems.push(`github.fix.timeoutMinutes must be a number of minutes above 0 (got ${shown(fix.timeoutMinutes)})`);
+  if (!whole(fix.maxAttempts)) problems.push(`github.fix.maxAttempts must be a whole number, 1 or more (got ${shown(fix.maxAttempts)})`);
+  if (!isNames(fix.neverTouch)) problems.push(`github.fix.neverTouch must be a list of path patterns (got ${shown(fix.neverTouch)})`);
+  if (!whole(fix.maxFiles)) problems.push(`github.fix.maxFiles must be a whole number, 1 or more (got ${shown(fix.maxFiles)})`);
+  return problems;
+}
+
 function problemsIn(config: Config): string[] {
   const problems: string[] = [];
   const shown = (v: unknown) => JSON.stringify(v);
@@ -138,6 +161,7 @@ function problemsIn(config: Config): string[] {
   }
 
   problems.push(...crewProblems(config.github));
+  problems.push(...fixProblems(config.github));
 
   if (typeof config.slack?.teamId !== "string") {
     problems.push(`slack.teamId must be a string (got ${shown(config.slack?.teamId)})`);

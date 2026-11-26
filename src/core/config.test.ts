@@ -154,3 +154,45 @@ test("the tools a Claude read may use default to read-only connector tools and m
   assert.throws(() => loadConfig(tempRoot({ slack: { sweep: { tools: "all" } } })), /slack\.sweep\.tools/);
   assert.throws(() => loadConfig(tempRoot({ calendar: { read: { tools: [7] } } })), /calendar\.read\.tools/);
 });
+
+const FIX_OFF = {
+  clones: {},
+  model: "opus",
+  maxBudgetUsd: 3,
+  timeoutMinutes: 20,
+  maxAttempts: 2,
+  neverTouch: [".github/**", ".teamcity/**"],
+  maxFiles: 20,
+};
+
+test("the fix settings default to off", () => {
+  assert.deepEqual(loadConfig(tempRoot()).github.fix, FIX_OFF);
+});
+
+test("a clone is named per repository and the rest keep their defaults", () => {
+  const fix = loadConfig(tempRoot({ github: { fix: { clones: { "acme/monolith": "/work/monolith" } } } })).github.fix;
+  assert.deepEqual(fix, { ...FIX_OFF, clones: { "acme/monolith": "/work/monolith" } });
+});
+
+test("fix settings in the wrong shape are reported", () => {
+  const cases: [object, string][] = [
+    [{ clones: ["x"] }, 'github.fix.clones must map "owner/repo" to the absolute path of its clone (got ["x"])'],
+    [{ clones: { "acme/monolith": "relative/path" } }, 'github.fix.clones must map "owner/repo" to the absolute path of its clone (got {"acme/monolith":"relative/path"})'],
+    [{ clones: { monolith: "/work/monolith" } }, 'github.fix.clones must map "owner/repo" to the absolute path of its clone'],
+    [{ maxBudgetUsd: 0 }, "github.fix.maxBudgetUsd must be a number above 0 (got 0)"],
+    [{ timeoutMinutes: "20" }, 'github.fix.timeoutMinutes must be a number of minutes above 0 (got "20")'],
+    [{ maxAttempts: 0 }, "github.fix.maxAttempts must be a whole number, 1 or more (got 0)"],
+    [{ maxAttempts: 1.5 }, "github.fix.maxAttempts must be a whole number, 1 or more (got 1.5)"],
+    [{ neverTouch: "x" }, 'github.fix.neverTouch must be a list of path patterns (got "x")'],
+    [{ maxFiles: -1 }, "github.fix.maxFiles must be a whole number, 1 or more (got -1)"],
+    [{ model: 5 }, "github.fix.model must be a model's name (got 5)"],
+  ];
+  for (const [fix, problem] of cases) {
+    assert.throws(
+      () => loadConfig(tempRoot({ github: { fix } })),
+      (e: unknown) => e instanceof Error && e.message.includes(problem),
+      problem,
+    );
+  }
+  assert.throws(() => loadConfig(tempRoot({ github: { fix: null } })), /github\.fix must be a block of settings/);
+});
