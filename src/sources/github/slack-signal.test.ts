@@ -55,6 +55,13 @@ function withSlack(messages: object[]) {
   });
 }
 
+test("the review channel is read over the same window as the rest of Slack: five days on a Monday", async () => {
+  const http = withSlack([]);
+  const monday = Date.parse("2026-11-22T23:00:00Z"); // Monday 23 November, 10:00 in Sydney
+  await collectGithub(contextWith(SIGNAL_LOCAL, { http, exec: gh(), secrets: token, now: () => monday }));
+  assert.ok(http.calls.find((u) => u.includes("conversations.history"))!.includes(`oldest=${(monday - 120 * 3_600_000) / 1000}`));
+});
+
 test("a PR that someone picked up in the review channel is skipped, with a link to the post", async () => {
   const http = withSlack([{ ts: "1795560000.000100", bot_id: "B1", text: `requested a review <${PR1_URL}|PR number 1>`, reactions: [{ name: "eyes", users: ["U1"] }] }]);
   const data = await collectGithub(contextWith(SIGNAL_LOCAL, { http, exec: gh(), secrets: token }));

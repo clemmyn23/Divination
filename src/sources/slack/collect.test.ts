@@ -31,6 +31,12 @@ test("collect reads each conversation, fetches replies only for threads, skips i
   assert.ok(http.calls.find((u) => u.includes("conversations.history"))!.includes(`oldest=${(NOW - 72 * 3_600_000) / 1000}`));
 });
 
+test("on a Monday collect reads the past five days", async () => {
+  const monday = Date.parse("2026-11-22T23:00:00Z"); // Monday 23 November, 10:00 in Sydney
+  await collectSlack(contextWith(SLACK_LOCAL, { http, secrets: token, now: () => monday }));
+  assert.ok(http.calls.find((u) => u.includes("conversations.history"))!.includes(`oldest=${(monday - 120 * 3_600_000) / 1000}`));
+});
+
 test("threads carry names, links and the conversation they came from; alert channels make no threads", async () => {
   const data = await collectSlack(ctx);
   const thread = data.threads.find((t) => t.messageCount === 3)!;

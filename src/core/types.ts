@@ -81,7 +81,10 @@ export interface Config {
     /** The workspace's team id (`T…`). When set, Slack links open the Slack app instead of the browser. */
     teamId: string;
     userId: string;
+    /** How far back Slack is read, in hours. */
     windowHours: number;
+    /** How far back Slack is read on a Monday, so the weekend does not use up the window. */
+    mondayWindowHours: number;
     /** Authors (names, or bot ids) whose threads are left out when nobody else wrote in them. */
     muteAuthors: string[];
     groups: SlackGroupConfig[];
