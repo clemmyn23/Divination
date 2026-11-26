@@ -134,6 +134,9 @@ export function originIs(url: string, host: string, repo: string): boolean {
   return foundHost.toLowerCase() === host.toLowerCase() && found.toLowerCase() === repo.toLowerCase();
 }
 
+/** How many attempts a PR has had, in the words used at the limit: "tried twice". */
+export const tried = (times: number): string => `tried ${times === 1 ? "once" : times === 2 ? "twice" : `${times} times`}, over to you`;
+
 /** A folder name for a PR's worktree: `acme/monolith#501` becomes `acme-monolith-501`. */
 export function worktreeName(key: string): string {
   return key

@@ -9,7 +9,7 @@ import { chain, readAttempts, recordAttempt } from "./attempts.ts";
 import { failingChecks, whatToFix, whyNot } from "./checks.ts";
 import { addWorktree, changedSince, checkClone, commitAll, fetchBranches, markersLeft, push, removeWorktree, snapshot, startMerge, sweepWorktrees } from "./git.ts";
 import { type CheckLog, readLogs } from "./logs.ts";
-import { commitMessage, touched, worktreeName } from "./rules.ts";
+import { commitMessage, touched, tried, worktreeName } from "./rules.ts";
 
 /**
  * How one fix ended. `refused` means it never started (the PR may not be fixed, or there
@@ -36,8 +36,6 @@ const TEXT_MAX = 300;
 
 const cut = (text: string) => (text.length <= TEXT_MAX ? text : `${text.slice(0, TEXT_MAX - 1)}…`);
 const words = (e: unknown) => (e instanceof Error ? e.message : String(e));
-/** "tried twice", in the words the page uses at the limit. */
-export const tried = (times: number) => `tried ${times === 1 ? "once" : times === 2 ? "twice" : `${times} times`}, over to you`;
 
 /** A fix that ends on purpose, with how and why. Anything else thrown is a failure. */
 class Stop extends Error {

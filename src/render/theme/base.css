@@ -163,12 +163,14 @@ button:disabled {
 }
 
 /* Buttons that call Claude carry a sparkle, so it is always clear which ones do. */
-button[data-enrich] {
+button[data-enrich],
+button[data-fix] {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-button[data-enrich]::before {
+button[data-enrich]::before,
+button[data-fix]::before {
   content: "✨ ";
 }
 

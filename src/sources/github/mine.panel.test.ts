@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { NOW, view } from "../../../test/helpers.ts";
 import { github } from "./index.ts";
-import { myDoneKey, myPrsPanel } from "./mine.panel.ts";
+import { myDoneKey, myPrsPanel, openFixable } from "./mine.panel.ts";
 import { githubPanels } from "./panel.ts";
 import type { GithubData, MyPull, Waits } from "./types.ts";
 
@@ -161,4 +161,81 @@ test("validate checks a PR's fix state, and accepts a PR collected before there 
   assert.deepEqual(withFix("on"), ["mine[0].fix must say can and spent as true or false"]);
   assert.deepEqual(withFix({ can: true, spent: false, last: { at: "now", outcome: "pushed", text: 7 } }), ["mine[0].fix.last needs at, outcome and text"]);
   assert.deepEqual(github.validate({ login: "me", prs: [], mine: [READY] }), []);
+});
+
+// ---- The Fix button ----
+
+const CAN = { can: true, spent: false };
+const fixable = (number: number, over: Partial<MyPull> = {}) => mine(number, { on: "fix", reasons: ["CI failing"] }, { ci: "fail", fix: CAN, ...over });
+const panelOf = (prs: MyPull[], v = view) => myPrsPanel({ login: "me", prs: [], mine: prs }, v).html;
+
+test("a PR that can be fixed has a Fix button, and one that cannot has none", () => {
+  const html = panelOf([fixable(8), { ...WAITING, fix: { can: false, spent: false } }, DRAFT, READY]);
+  assert.deepEqual(html.match(/<button data-fix="[^"]*"[^>]*>[^<]*<\/button>/g), ['<button data-fix="o/r#8">Fix</button>']);
+  // It sits under the meta line, before the tick.
+  assert.ok(html.includes('<span class="ci-fail">CI ✗</span></p>\n<button data-fix="o/r#8">Fix</button>'));
+});
+
+test("the last attempt is told under the meta line", () => {
+  const at = NOW + 42 * 60_000; // 10:42 in Sydney
+  const noted = (last: { outcome: "pushed" | "gave-up" | "failed"; text: string }, over: Partial<MyPull> = {}) =>
+    panelOf([fixable(8, { fix: { can: true, spent: false, last: { at, ...last } }, ...over })]).match(/<p class="fix-note">.*<\/p>/)?.[0];
+  assert.equal(noted({ outcome: "pushed", text: "Moved the helper." }), '<p class="fix-note">Fix pushed 10:42: Moved the helper.</p>');
+  assert.equal(noted({ outcome: "gave-up", text: "The test needs a database change." }), '<p class="fix-note">Could not fix: The test needs a database change.</p>');
+  assert.equal(noted({ outcome: "failed", text: "the branch moved" }), '<p class="fix-note">Fix failed: the branch moved</p>');
+  // The note comes between the meta line and the button.
+  const html = panelOf([fixable(8, { fix: { can: true, spent: false, last: { at, outcome: "failed", text: "x" } } })]);
+  assert.ok(html.includes('</p>\n<p class="fix-note">Fix failed: x</p>\n<button data-fix="o/r#8">Fix</button>'));
+});
+
+test("a pushed fix whose CI is still running says it is waiting on CI, and needs no button", () => {
+  const running = mine(9, { on: "others", reasons: ["CI running", "waiting on review"] }, { ci: "pending", fix: { can: false, spent: false, last: { at: NOW + 42 * 60_000, outcome: "pushed", text: "Moved the helper." } } });
+  const html = panelOf([running]);
+  assert.ok(html.includes('<p class="fix-note">Fix pushed 10:42: Moved the helper. Waiting on CI.</p>'));
+  assert.ok(!html.includes("data-fix"));
+});
+
+test("an attempt from another day is dated", () => {
+  const html = panelOf([fixable(8, { fix: { can: true, spent: false, last: { at: NOW - 2 * DAY, outcome: "pushed", text: "Moved the helper." } } })]);
+  assert.ok(html.includes('<p class="fix-note">Fix pushed 23 Nov: Moved the helper.</p>'));
+});
+
+test("at the limit the button gives way to words", () => {
+  const spent = fixable(8, { fix: { can: false, spent: true, last: { at: NOW, outcome: "gave-up", text: "The test needs a database change." } } });
+  const html = panelOf([spent]);
+  assert.ok(!html.includes("data-fix"));
+  assert.ok(html.includes('<p class="fix-note">Tried twice, over to you. Last: The test needs a database change.</p>'));
+  const three = { ...view, config: { ...view.config, github: { ...view.config.github, fix: { ...view.config.github.fix, maxAttempts: 3 } } } };
+  assert.ok(panelOf([spent], three).includes("Tried 3 times, over to you."));
+});
+
+test("Fix all appears when two or more open PRs can be fixed, and counts them", () => {
+  const two = panelOf([fixable(8), fixable(9)]);
+  assert.ok(two.includes('<h3 class="group">To fix · 2</h3>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>\n<ul class="items">'));
+  assert.ok(!panelOf([fixable(8), mine(9, { on: "fix", reasons: ["CI failing"] }, { ci: "fail" })]).includes('data-fix="all"'));
+  // With nothing in "To fix", it sits under "Needs you".
+  const asked = (n: number) => mine(n, { on: "me", reasons: ["changes requested", "CI failing"] }, { ci: "fail", review: "changes_requested", fix: CAN });
+  assert.ok(panelOf([asked(8), asked(9)]).includes('<h3 class="group">Needs you · 2</h3>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>'));
+});
+
+test("Fix all leaves out PRs that are old or ticked off, which keep their own button", () => {
+  const old = fixable(12, { updatedAt: NOW - 46 * DAY });
+  const ticked = fixable(13);
+  const needsMe = mine(14, { on: "me", reasons: ["changes requested", "CI failing"] }, { ci: "fail", review: "changes_requested", fix: CAN });
+  const prs = [fixable(8), old, ticked, needsMe, { ...WAITING, fix: { can: false, spent: false } }];
+  const done = { ...view, done: { [myDoneKey(ticked)]: NOW } };
+  // In the panel's order: what needs me first, then what is mine to fix.
+  assert.deepEqual(openFixable(prs, done).map((pr) => pr.number), [14, 8]);
+  assert.deepEqual(openFixable([], done), []);
+
+  const html = panelOf(prs, done);
+  assert.ok(html.includes('title="Fixes 2 PRs, one at a time"'));
+  assert.ok(html.indexOf('data-fix="o/r#12"') > html.indexOf('<details class="stale">'));
+  assert.ok(html.indexOf('data-fix="o/r#13"') > html.indexOf('<details class="stale done">'));
+});
+
+test("text in an attempt is escaped", () => {
+  const html = panelOf([fixable(8, { key: '"><i>', fix: { can: true, spent: false, last: { at: NOW, outcome: "failed", text: "<b>x</b>" } } })]);
+  assert.ok(html.includes("Fix failed: &lt;b&gt;x&lt;/b&gt;"));
+  assert.ok(!html.includes("<b>") && !html.includes("<i>"));
 });

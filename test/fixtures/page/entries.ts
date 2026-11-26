@@ -106,7 +106,15 @@ const queue: GithubData = {
   mine: [
     mine(425, "Remember the last audience filter", [130, 22], "pass", "approved", "me", ["ready to merge"], 0),
     mine(411, "Tidy the template gallery's empty state", [85, 30], "pass", "changes_requested", "me", ["changes requested", "merge conflicts"], 2),
-    mine(417, "Make the send-time picker keyboard friendly", [240, 60], "fail", "none", "fix", ["CI failing", "2 comments to answer"]),
+    { ...mine(417, "Make the send-time picker keyboard friendly", [240, 60], "fail", "none", "fix", ["CI failing", "2 comments to answer"]), fix: { can: true, spent: false } },
+    {
+      ...mine(426, "ABC-426: Sort the export columns", [64, 18], "fail", "none", "fix", ["CI failing"], 0),
+      fix: { can: true, spent: false, last: { at: -25 * 60_000, outcome: "pushed" as const, text: "Moved the helper above the struct." } },
+    },
+    {
+      ...mine(408, "ABC-408: Change the report query", [15, 3], "fail", "none", "fix", ["CI failing"], 2),
+      fix: { can: false, spent: true, last: { at: -3 * 3_600_000, outcome: "gave-up" as const, text: "The integration test needs a database change." } },
+    },
     mine(424, "Cache the segment counts", [310, 44], "pending", "none", "others", ["CI running", "waiting on review"], 0),
     mine(414, "Drop the legacy colour picker", [20, 640], "pass", "changes_requested", "others", ["waiting on a second look"], 3),
     mine(422, "Try a new layout for the report page", [520, 80], "fail", "none", "draft", [], 1),
@@ -135,7 +143,12 @@ function queueAt(now: number): GithubData {
   return {
     ...queue,
     prs: queue.prs.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now })),
-    mine: queue.mine!.map((p) => ({ ...p, createdAt: now + p.createdAt, updatedAt: now + p.updatedAt })),
+    mine: queue.mine!.map((p) => ({
+      ...p,
+      createdAt: now + p.createdAt,
+      updatedAt: now + p.updatedAt,
+      ...(p.fix?.last ? { fix: { ...p.fix, last: { ...p.fix.last, at: now + p.fix.last.at } } } : {}),
+    })),
   };
 }
 

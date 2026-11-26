@@ -5,6 +5,7 @@
  *   ul.items > li.item  a list of things; li.thread and li.pr are items too
  *   li.needs-you        an item that is waiting on you
  *   p.meta              the small line under an item
+ *   p.fix-note          what the last attempt at fixing a PR did
  *   span.tag            a small label (rotation, direct, optional)
  *   span.ci-pass | ci-fail | ci-pending
  *   h4.conv             a conversation name (alerts panel)
@@ -459,6 +460,22 @@
   margin: 0 0 2px;
   font-size: 11.5px;
   color: var(--ink-soft);
+}
+
+/* What the last attempt at fixing a PR did: one quiet line under the meta line. */
+
+.fix-note {
+  margin: 1px 0 0;
+  font-size: 11px;
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+/* Fix all sits on its own line under the group's heading. */
+
+button[data-fix="all"] {
+  display: block;
+  margin: 2px 0 4px;
 }
 
 /* Drafted reviews stay folded until opened. */

@@ -232,6 +232,8 @@ test("theme defines tokens, dark mode and the phone breakpoint", () => {
     ".tint-sky",
     '[data-stale="true"]',
     "button[data-enrich]",
+    "button[data-fix]::before",
+    ".fix-note",
     "ui-rounded",
   ]) {
     assert.ok(css.includes(needle), needle);
