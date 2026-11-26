@@ -88,7 +88,9 @@ test("a missing, empty or hand-broken attempts file reads as no attempts", () =>
   }
   const c = contextWith();
   mkdirSync(dirname(attemptsPath(c)), { recursive: true });
-  writeFileSync(attemptsPath(c), JSON.stringify({ bad: "x", worse: [{ startSha: 7 }], good: [a("s0", "s1"), { outcome: "nope", startSha: "s" }] }));
+  // An entry with the right commits but no time, words or "ran Claude" is not an attempt either.
+  const thin = [{ startSha: "s0", pushedSha: "s1", outcome: "pushed" }, { ...a("s0", "s1"), at: "now" }, { ...a("s0", "s1"), text: 7 }, { ...a("s0", "s1"), ranClaude: "yes" }];
+  writeFileSync(attemptsPath(c), JSON.stringify({ bad: "x", worse: [{ startSha: 7 }], thin, good: [a("s0", "s1"), { outcome: "nope", startSha: "s" }] }));
   assert.deepEqual(readAttempts(c), { good: [a("s0", "s1")] });
   recordAttempt(c, "good", a("s1", "s2")); // and it can still be added to
   assert.equal(readAttempts(c).good!.length, 2);

@@ -106,9 +106,14 @@ export function commitMessage(
   return body ? `${subject}\n\n${body}` : subject;
 }
 
-/** The first of the paths that matches one of the patterns a fix may never touch. */
+/**
+ * The first of the paths that matches one of the patterns a fix may never touch. A pattern
+ * ending in `/**` is a folder and covers everything under it, whatever it is called: a
+ * glob alone lets dot files and dot folders through.
+ */
 export function touched(paths: string[], patterns: string[]): string | undefined {
-  return paths.find((path) => patterns.some((pattern) => matchesGlob(path, pattern)));
+  const covers = (pattern: string, path: string) => (pattern.endsWith("/**") && path.startsWith(pattern.slice(0, -2))) || matchesGlob(path, pattern);
+  return paths.find((path) => patterns.some((pattern) => covers(pattern, path)));
 }
 
 /** Whether a clone's `origin` address points at this repository on this host, in any form git writes it. */

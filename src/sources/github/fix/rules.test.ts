@@ -53,6 +53,12 @@ test("a changed path under a protected pattern is found", () => {
   const patterns = [".github/**", ".teamcity/**"];
   assert.equal(touched(["src/a.cs", ".github/workflows/ci.yml"], patterns), ".github/workflows/ci.yml");
   assert.equal(touched(["src/.github.ts", "docs/teamcity.md"], patterns), undefined);
+  // Names a glob alone would let through: dot files, dot folders, accents and quotes.
+  for (const path of [".github/workflows/.ci.yml", ".github/.d/f", ".github/workflows/é.yml", '.github/workflows/"q".yml', ".github/x"]) {
+    assert.equal(touched([path], patterns), path);
+  }
+  assert.equal(touched([".githubx/a", "a/.github/b"], patterns), undefined);
+  assert.equal(touched(["docs/secret.md"], ["docs/*.md"]), "docs/secret.md"); // other globs still work
 });
 
 test("the clone's origin is recognised in each form git writes it", () => {

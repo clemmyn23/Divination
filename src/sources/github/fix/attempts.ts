@@ -13,7 +13,16 @@ export const attemptsPath = (ctx: Context): string => join(ctx.paths.out, "fix",
 function isAttempt(v: unknown): v is Attempt {
   if (typeof v !== "object" || v === null) return false;
   const t = v as Partial<Attempt>;
-  return typeof t.startSha === "string" && OUTCOMES.includes(String(t.outcome)) && (t.pushedSha === undefined || typeof t.pushedSha === "string");
+  return (
+    typeof t.startSha === "string" &&
+    OUTCOMES.includes(String(t.outcome)) &&
+    (t.pushedSha === undefined || typeof t.pushedSha === "string") &&
+    // The page prints these and the count rests on them, so an entry without them is not an attempt.
+    typeof t.at === "number" &&
+    Number.isFinite(t.at) &&
+    typeof t.text === "string" &&
+    typeof t.ranClaude === "boolean"
+  );
 }
 
 /**

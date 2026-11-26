@@ -64,8 +64,9 @@ github:
     timeoutMinutes: 20
     # Attempts in a row on one PR before the tool hands it back to you.
     maxAttempts: 2
-    # A fix that changes a path matching one of these is thrown away.
-    neverTouch: [".github/**", ".teamcity/**"]
+    # A fix that changes a path matching one of these is thrown away: CI configuration, what
+    # Claude is told when it works in the repository, and git hooks.
+    neverTouch: [".github/**", ".teamcity/**", ".claude/**", ".husky/**", ".githooks/**"]
     # A fix that changes more files than this is thrown away.
     maxFiles: 20
   rank:

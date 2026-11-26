@@ -102,7 +102,9 @@ Asked of GitHub fresh at this moment, not taken from collected data:
 
 ### 3. Read the failing logs (CI only)
 
-- A failing commit status carries a link to its build. The build id is the last path
+- A failing commit status carries a link to its build. Only a commit status's link is
+  used: a failing check run's link is GitHub's own page, and its number is not a build.
+  The build id is the last path
   segment of that link when it is all digits.
 - The log is read with `teamcity run log <id> --raw --no-color --no-input`. (The tool's
   `--failed` summary was checked against a real style-check failure and gave only "exit
@@ -171,12 +173,23 @@ Asked of GitHub fresh at this moment, not taken from collected data:
     (`ABC-123`), otherwise `Fix <check names>`; then a blank line and Claude's summary.
   - Conflicts: `Merge <base branch> into <head branch>`, then the summary.
   - No Claude or co-author line. (The owner's standing rule for commits.)
-- **Git hooks are switched off for the commit and the push.** A hook runs programs from
+- **Git hooks are switched off for every git step of a fix**, not only the commit and
+  the push: a repository can keep its hooks in a tracked folder, and making a worktree
+  runs them. A hook runs programs from
   the worktree (the monolith's hooks run a script from the worktree's own
   `node_modules`), and Claude can write files there, including ignored ones that the
   checks above never see. With hooks on, a file edit could become a program run on the
   laptop. In a fresh worktree those hooks find nothing installed and check nothing
   anyway; CI is the check.
+- **Git is never asked to read the worktree's `.git` file once Claude has been in it.**
+  That file tells git where its own folder is; pointed at a planted folder it would hand
+  git a config, and a config can name a program to run. Every git call in the worktree
+  names git's folder outright, the file is checked for change after Claude finishes (a
+  change throws the fix away), and the worktree is removed as plain files. (Found by the
+  whole-branch review, and confirmed against real git.)
+- File names are read exactly as git stores them, so a name git would print in quotes
+  cannot slip past `neverTouch` or the conflict-marker check. A `neverTouch` pattern
+  ending in `/**` covers everything under that folder, dot files included.
 - Only tracked and new, un-ignored files are committed. Ignored files Claude made go
   when the worktree is removed.
 - `git push origin HEAD:refs/heads/<head branch>`, never forced. A rejected push ends the
@@ -284,7 +297,7 @@ Under `github` in `config/defaults.yaml`:
     timeoutMinutes: 20
     maxAttempts: 2
     # A fix that changes a path matching one of these is thrown away.
-    neverTouch: [".github/**", ".teamcity/**"]
+    neverTouch: [".github/**", ".teamcity/**", ".claude/**", ".husky/**", ".githooks/**"]
     # A fix that changes more files than this is thrown away.
     maxFiles: 20
 ```

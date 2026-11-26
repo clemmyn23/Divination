@@ -486,7 +486,7 @@ test("worktrees left by a killed run are swept when the server starts", async ()
   createApp(c, [fakeSource()], "tok", fakeTimers());
   await settle();
   assert.ok(!existsSync(stray));
-  assert.ok(exec.calls.some((call) => call.join(" ").includes("worktree remove --force")));
+  assert.ok(exec.calls.some((call) => call.join(" ") === "git -C /work/monolith worktree prune")); // the clone forgets it
 
   // With nothing left behind, starting the server runs no git at all.
   const quiet = fakeExec({});

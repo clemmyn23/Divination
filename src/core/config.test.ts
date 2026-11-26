@@ -161,7 +161,7 @@ const FIX_OFF = {
   maxBudgetUsd: 3,
   timeoutMinutes: 20,
   maxAttempts: 2,
-  neverTouch: [".github/**", ".teamcity/**"],
+  neverTouch: [".github/**", ".teamcity/**", ".claude/**", ".husky/**", ".githooks/**"],
   maxFiles: 20,
 };
 

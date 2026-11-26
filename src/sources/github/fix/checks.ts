@@ -6,7 +6,11 @@ import type { CheckRun, Ci, CombinedStatus } from "../types.ts";
 
 export interface FailingCheck {
   name: string;
-  /** Where the check's build can be seen. A CI server's status links to its build. */
+  /**
+   * Where the check's build can be seen, for a commit status: a CI server's status links
+   * to its build. A check run's link is left out. It is GitHub's own page for the run, and
+   * its number is not a build.
+   */
   url?: string;
 }
 
@@ -18,7 +22,7 @@ export function failingChecks(runs: CheckRun[], combined: CombinedStatus): Faili
   const named = (name: string | undefined, url: string | null | undefined): FailingCheck => ({ name: name || "a check", ...(url ? { url } : {}) });
   return [
     ...(combined.statuses ?? []).filter((s) => FAILED_STATUSES.includes(s.state)).map((s) => named(s.context, s.target_url)),
-    ...runs.filter((r) => FAILED_RUNS.includes(r.conclusion ?? "")).map((r) => named(r.name, r.details_url)),
+    ...runs.filter((r) => FAILED_RUNS.includes(r.conclusion ?? "")).map((r) => named(r.name, undefined)),
   ];
 }
 

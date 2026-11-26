@@ -35,7 +35,7 @@ test("failing statuses and failing check runs are listed, statuses first", () =>
   assert.deepEqual(failingChecks(runs, combined), [
     { name: "Style check", url: "https://ci.example.com/teamcity/buildConfiguration/Acme_Style/4090522" },
     { name: "Docker tests" },
-    { name: "lint", url: "https://git.example.com/acme/monolith/runs/9" },
+    { name: "lint" }, // a check run's link is not a CI server's build, so it is not kept
     { name: "a check" },
   ]);
   assert.deepEqual(failingChecks([], { state: "success", total_count: 0 }), []);

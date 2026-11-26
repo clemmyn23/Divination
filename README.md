@@ -193,8 +193,9 @@ Everything the tool writes goes under `out/`, which is not committed:
   approval, and merges nothing.
 - During a fix, Claude's file tools are confined to the throwaway worktree: it cannot
   read or change anything else on the machine, and it cannot run a program. The git is
-  done by the tool's own code, with the repository's hooks switched off, so nothing
-  Claude wrote is ever run here. What a build log or a file says is never written to the
+  done by the tool's own code, with the repository's hooks switched off for every step
+  and without reading the worktree's own `.git` file, so nothing Claude wrote is run
+  here. A fix that changes CI configuration, `.claude/` or a hooks folder is thrown away. What a build log or a file says is never written to the
   tool's own log.
 
 ## Adding a source

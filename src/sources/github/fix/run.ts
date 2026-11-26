@@ -7,7 +7,21 @@ import type { Attempt } from "../types.ts";
 import { askForFix } from "./ask.ts";
 import { chain, readAttempts, recordAttempt } from "./attempts.ts";
 import { failingChecks, whatToFix, whyNot } from "./checks.ts";
-import { addWorktree, changedSince, checkClone, commitAll, fetchBranches, markersLeft, push, removeWorktree, snapshot, startMerge, sweepWorktrees } from "./git.ts";
+import {
+  addWorktree,
+  changedSince,
+  checkClone,
+  commitAll,
+  fetchBranches,
+  markersLeft,
+  push,
+  removeWorktree,
+  snapshot,
+  startMerge,
+  sweepWorktrees,
+  tampered,
+  withoutHooks,
+} from "./git.ts";
 import { type CheckLog, readLogs } from "./logs.ts";
 import { commitMessage, touched, tried, worktreeName } from "./rules.ts";
 
@@ -51,13 +65,16 @@ class Stop extends Error {
  *
  * What is asked of GitHub is asked fresh, now. Conflicts are fixed before failing CI,
  * and alone. Claude only edits files in a throwaway worktree; this code does the git,
- * with hooks off, and pushes to the PR's own branch and nowhere else, never forced.
- * However it ends, the worktree is removed. Nothing a log or a file says reaches
- * `ctx.log`: only step names, check names and Claude's own summary.
+ * with hooks off for every step, and pushes to the PR's own branch and nowhere else,
+ * never forced. Nothing in the worktree is trusted to steer git once Claude has been in
+ * it (see git.ts). However it ends, the worktree is removed. Nothing a log or a file
+ * says reaches `ctx.log`: only step names, check names and Claude's own summary.
  */
 export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> = {}): Promise<FixResult> {
   const ask = deps.ask ?? askForFix;
   const fix = ctx.config.github.fix;
+  const noHooks = noHooksDir(ctx);
+  const git = withoutHooks(ctx.exec, noHooks); // every git call a fix makes runs with hooks off
   const refuse = (text: string): FixResult => {
     ctx.log("fix-end", { key, outcome: "refused", text: cut(text) });
     return { key, outcome: "refused", text: cut(text) };
@@ -96,7 +113,8 @@ export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> =
 
     const used = chain(readAttempts(ctx)[key] ?? [], headSha).filter((attempt) => attempt.ranClaude).length;
     if (used >= fix.maxAttempts) return refuse(tried(fix.maxAttempts));
-    await checkClone(ctx.exec, clone, ctx.config.github.host, repo);
+    mkdirSync(noHooks, { recursive: true });
+    await checkClone(git, clone, ctx.config.github.host, repo);
   } catch (e) {
     return refuse(words(e));
   }
@@ -106,11 +124,10 @@ export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> =
   const step = (name: string) => ctx.log("fix-step", { key, step: name });
   const attempt: Attempt = { at: ctx.now(), what, checks: checks.map((check) => check.name), startSha: headSha, outcome: "failed", text: "", ranClaude: false };
   const dir = join(workRoot(ctx), worktreeName(key));
-  const noHooks = noHooksDir(ctx);
   let made = false;
 
   try {
-    await sweepWorktrees(ctx.exec, Object.values(fix.clones), workRoot(ctx));
+    await sweepWorktrees(git, Object.values(fix.clones), workRoot(ctx));
 
     let logs: CheckLog[] = [];
     if (what === "ci") {
@@ -119,22 +136,21 @@ export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> =
     }
 
     step("making the worktree");
-    const fetched = await fetchBranches(ctx.exec, clone, headRef, baseRef);
+    const fetched = await fetchBranches(git, clone, headRef, baseRef);
     if (fetched.headSha !== headSha) throw new Stop("failed", "the branch moved before the fix started");
     mkdirSync(workRoot(ctx), { recursive: true });
-    mkdirSync(noHooks, { recursive: true });
     made = true; // from here a half-made worktree is removed too
-    await addWorktree(ctx.exec, clone, dir, headSha);
+    const tree = await addWorktree(git, clone, dir, headSha);
 
     let conflicted: string[] = [];
     if (what === "conflicts") {
       step(`merging ${baseRef}`);
-      conflicted = (await startMerge(ctx.exec, dir, baseRef)).conflicted;
+      conflicted = (await startMerge(git, tree, baseRef)).conflicted;
       if (conflicted.length === 0) throw new Stop("failed", "git found no conflicts to resolve");
     }
 
     // What Claude changes is measured from here, so files the base branch brought in do not count.
-    const before = await snapshot(ctx.exec, dir);
+    const before = await snapshot(git, tree);
     step("asking Claude");
     attempt.ranClaude = true;
     const answer = await ask(ctx, {
@@ -147,21 +163,24 @@ export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> =
         if (usage.costUsd !== undefined) attempt.costUsd = usage.costUsd;
       },
     });
+    // Git never reads the worktree's .git file again, so a changed one can do nothing. It
+    // still means something tried to steer git, and nothing from this run is kept.
+    if (tampered(tree)) throw new Stop("failed", "the worktree's .git file was changed, so the fix was thrown away");
     if (answer.outcome === "cannot") throw new Stop("gave-up", answer.reason);
 
     step("checking the change");
-    const changed = await changedSince(ctx.exec, dir, before);
+    const changed = await changedSince(git, tree, before);
     if (changed.length === 0) throw new Stop("gave-up", "Claude changed nothing");
-    const marked = await markersLeft(ctx.exec, dir, conflicted);
+    const marked = await markersLeft(git, tree, conflicted);
     if (marked.length > 0) throw new Stop("failed", `${marked[0]} still has conflict markers`);
     const forbidden = touched(changed, fix.neverTouch);
     if (forbidden) throw new Stop("failed", `the fix changed ${forbidden}, which a fix may not touch`);
     if (changed.length > fix.maxFiles) throw new Stop("failed", `the fix changed ${changed.length} files; the limit is ${fix.maxFiles}`);
 
     step("committing");
-    const sha = await commitAll(ctx.exec, dir, commitMessage(what, { title, headRef, baseRef }, attempt.checks, answer.summary), noHooks);
+    const sha = await commitAll(git, tree, commitMessage(what, { title, headRef, baseRef }, attempt.checks, answer.summary));
     step("pushing");
-    await push(ctx.exec, dir, headRef, noHooks);
+    await push(git, tree, headRef);
 
     attempt.pushedSha = sha;
     attempt.outcome = "pushed";
@@ -170,7 +189,7 @@ export async function fixOne(ctx: Context, key: string, deps: Partial<FixDeps> =
     attempt.outcome = e instanceof Stop ? e.outcome : "failed";
     attempt.text = words(e);
   } finally {
-    if (made) await removeWorktree(ctx.exec, clone, dir);
+    if (made) await removeWorktree(git, clone, dir);
   }
 
   attempt.text = cut(attempt.text);
