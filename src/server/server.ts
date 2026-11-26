@@ -10,6 +10,7 @@ import { pageHtml, renderSite } from "../render/site.ts";
 import { sweepWorktrees } from "../sources/github/fix/git.ts";
 import { type FixProgress, fixJob } from "../sources/github/fix/job.ts";
 import { type fixOne, workRoot } from "../sources/github/fix/run.ts";
+import { Refusal, parsePost, postReview } from "../sources/github/review/post.ts";
 import { type ActivityUpdate, createActivity } from "./activity.ts";
 import { createFeeder } from "./feed.ts";
 import { createJobs } from "./jobs.ts";
@@ -17,6 +18,11 @@ import { type Timers, createLive } from "./live.ts";
 
 const MAX_BODY = 10_000;
 const MAX_FIELD = 300;
+/** A review's notes are paragraphs, not fields: the one route that posts them takes a larger body. */
+const REVIEW_PATH = "/api/review/post";
+const MAX_REVIEW_BODY = 200_000;
+const maxBody = (path: string) => (path === REVIEW_PATH ? MAX_REVIEW_BODY : MAX_BODY);
+const ERROR_MAX = 300;
 const TOKEN_PLACEHOLDER = "__DIVINATION_TOKEN__";
 /** One of my PRs (`owner/repo#number`), or every fixable one. */
 const FIX_KEY = /^(?:all|[\w.-]+\/[\w.-]+#\d{1,9})$/;
@@ -74,6 +80,7 @@ const ROUTES: Record<string, "GET" | "POST"> = {
   "/api/done": "POST",
   "/api/fix": "POST",
   "/api/fix/stop": "POST",
+  [REVIEW_PATH]: "POST",
 };
 
 /**
@@ -81,12 +88,19 @@ const ROUTES: Record<string, "GET" | "POST"> = {
  *
  * It serves the page, owns the live-update timer, and is the only way a button press
  * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now through `feed`, a
- * Fix button through `fixJob`. A Fix button is also the only thing here that changes
- * anything outside this machine: it pushes a commit to one of my own PRs. It answers only
+ * Fix button through `fixJob`. Two buttons change something outside this machine, and
+ * nothing else here does: a Fix button pushes a commit to one of my own PRs, and the Post
+ * button in a drafted review's dialog posts that review to its PR. It answers only
  * requests addressed to its own loopback address, and only acts on a POST that carries the
  * token it put in the page.
  */
-export function createApp(base: Context, sources: Source<any>[], token: string, timers?: Timers, deps: { fix?: typeof fixOne } = {}) {
+export function createApp(
+  base: Context,
+  sources: Source<any>[],
+  token: string,
+  timers?: Timers,
+  deps: { fix?: typeof fixOne; post?: typeof postReview } = {},
+) {
   // Everything the tool reports through `log` is also kept for the page's activity view.
   const activity = createActivity(
     base.now,
@@ -152,7 +166,7 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
 
     let body: unknown = {};
     if (req.method === "POST" && req.body !== "") {
-      if (req.body.length > MAX_BODY) return refuse(400, "body too large");
+      if (req.body.length > maxBody(req.path)) return refuse(400, "body too large");
       try {
         body = JSON.parse(req.body);
       } catch {
@@ -274,6 +288,25 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
         stopping = true;
         return json(200, status());
       }
+
+      // The Post button in a drafted review's dialog: the ticked notes go to the PR as one
+      // review, under my name. Nothing but that press reaches this, and no LLM is involved.
+      // It is answered when GitHub has answered, and is not a job: it does not wait for a
+      // refresh that happens to be running.
+      case REVIEW_PATH: {
+        const request = parsePost(fields);
+        if (typeof request === "string") return refuse(400, request);
+        try {
+          const posted = await (deps.post ?? postReview)(ctx, request);
+          renderSite(ctx, sources); // the page file changes, so open pages show that it was posted
+          return json(200, posted);
+        } catch (e) {
+          const error = (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
+          if (e instanceof Refusal) return refuse(409, error);
+          ctx.log("review-post-failed", { key: request.key.split("@")[0], error });
+          return refuse(502, error);
+        }
+      }
     }
     return refuse(404, "not found");
   }
@@ -288,7 +321,7 @@ export function listen(app: { handle(req: AppRequest): Promise<AppResponse> }, p
     let tooLarge = false;
     req.setEncoding("utf8");
     req.on("data", (chunk: string) => {
-      if (body.length + chunk.length > MAX_BODY) tooLarge = true;
+      if (body.length + chunk.length > maxBody((req.url ?? "/").split("?")[0]!)) tooLarge = true;
       else body += chunk;
     });
     req.on("end", async () => {
@@ -298,7 +331,7 @@ export function listen(app: { handle(req: AppRequest): Promise<AppResponse> }, p
           method: req.method ?? "GET",
           path: (req.url ?? "/").split("?")[0]!,
           headers: req.headers as Record<string, string | undefined>,
-          body: tooLarge ? "x".repeat(MAX_BODY + 1) : body,
+          body: tooLarge ? "x".repeat(MAX_REVIEW_BODY + 1) : body,
         });
       } catch (e) {
         out = refuse(500, e instanceof Error ? e.message : String(e));
