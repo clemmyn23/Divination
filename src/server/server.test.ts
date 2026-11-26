@@ -198,6 +198,21 @@ test("a refresh shows each source's progress in status and leaves a story in the
   assert.ok(log.body.lines.every((l: { at: number; level: string }) => typeof l.at === "number" && ["info", "error"].includes(l.level)));
 });
 
+test("a press that asks again reruns an item that was already done, and anything but true or false is refused", async () => {
+  await app.handle(req("POST", "/api/enrich", { body: '{"enricher":"fake-enricher","key":"a"}' }));
+  await settle();
+  const before = runs.length;
+  assert.equal((await app.handle(req("POST", "/api/enrich", { body: '{"enricher":"fake-enricher","key":"a"}' }))).status, 202);
+  await settle();
+  assert.equal(runs.length, before); // done already: nothing is sent
+
+  assert.equal((await app.handle(req("POST", "/api/enrich", { body: '{"enricher":"fake-enricher","key":"a","again":true}' }))).status, 202);
+  await settle();
+  assert.equal(runs.length, before + 1);
+
+  assert.equal((await app.handle(req("POST", "/api/enrich", { body: '{"enricher":"fake-enricher","key":"a","again":"yes"}' }))).status, 400);
+});
+
 test("asking for enrichment is in the activity log, and the log needs the right host but no token", async () => {
   await json(req("POST", "/api/enrich", { body: JSON.stringify({ enricher: "fake-enricher", key: "a" }) }));
   await settle();

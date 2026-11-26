@@ -85,9 +85,9 @@ function item(pr: PullRequest, view: View): string {
   let extra = "";
   if (needsYou) {
     const review = asReview(view.enrich["pr-review"]?.[reviewKey(pr)]);
-    extra = review
-      ? `\n${reviewHtml(review)}`
-      : `\n<button data-enrich="pr-review" data-key="${esc(reviewKey(pr))}">Draft review</button>`;
+    const ask = `data-enrich="pr-review" data-key="${esc(reviewKey(pr))}"`;
+    // A draft can be asked for again: a rerun replaces it, and a rerun that fails keeps it.
+    extra = review ? `\n${reviewHtml(review)}\n<button ${ask} data-again>Rerun review</button>` : `\n<button ${ask}>Draft review</button>`;
   }
   const key = prDoneKey(pr);
   return `<li class="item pr${needsYou ? " needs-you" : ""}">${link(pr.title, pr.url)}

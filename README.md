@@ -43,7 +43,7 @@ All are run as `pnpm divination <command>`.
 | `collect [source]` | Gather data now, with plain API calls |
 | `render [--fixtures]` | Redraw the page from the last collected data; `--fixtures` draws a sample page |
 | `tick [--force]` | Collect and redraw once; skipped outside working hours unless forced |
-| `enrich <enricher> <key \| all>` | Call Claude for one item. This is an LLM call |
+| `enrich <enricher> <key \| all> [--again]` | Call Claude for one item; `--again` redoes one already done. This is an LLM call |
 | `schedule install \| uninstall \| status` | Keep the page server running from login |
 | `secret set <name>` | Store a token in this computer's token store |
 | `sweep-plan` | Print what a hand-started Slack sweep should read |
@@ -90,8 +90,10 @@ review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply 
 
 Collecting and drawing never call an LLM. Claude is called only when you ask:
 
-- a button with a sparkle on the page (**Draft review**, **Summarise threads**), or the
-  `enrich` command typed by hand;
+- a button with a sparkle on the page (**Draft review**, **Rerun review**, **Summarise
+  threads**), or the `enrich` command typed by hand. **Rerun review** drafts a review
+  again for a PR that already has one and replaces the old draft; if the rerun fails, the
+  old draft stays;
 - `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session
   ([INSTALL.md](INSTALL.md#4-give-each-source-access) says when you need them);
 - **Refresh now**, but only with `claudeReads.onRefresh: true`, and only for sources whose

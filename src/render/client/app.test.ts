@@ -397,6 +397,16 @@ test("a sparkle button asks the server for exactly that item and shows it is wor
   assert.equal(p.draft.disabled, true);
 });
 
+test("a rerun button asks for the same item again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.draft.textContent = "Rerun review";
+  p.draft.dataset.again = "";
+  await p.click(p.draft);
+  assert.deepEqual(p.posts()[0]!.body, { enricher: "pr-review", key: "o/r#1@aaa111", again: true });
+  assert.equal(p.draft.textContent, "Asking Claude…");
+});
+
 test("nothing asks for enrichment unless a sparkle button is pressed", async () => {
   const p = page(null);
   await p.finishParsing();

@@ -217,11 +217,13 @@ export function createApp(base: Context, sources: Source<any>[], token: string, 
       }
 
       case "/api/enrich": {
-        const { enricher, key } = fields;
+        const { enricher, key, again } = fields;
         const valid = (v: unknown): v is string => typeof v === "string" && v !== "" && v.length <= MAX_FIELD;
         if (!valid(enricher) || !valid(key)) return refuse(400, '"enricher" and "key" must be short strings');
+        // A rerun button: send the item to Claude even though it has an answer already.
+        if (again !== undefined && typeof again !== "boolean") return refuse(400, '"again" must be true or false');
         const started = jobs.run(`enrich:${enricher}:${key}`, async () => {
-          await enrichOnDemand(ctx, sources, enricher, key);
+          await enrichOnDemand(ctx, sources, enricher, key, { again: again === true });
           renderSite(ctx, sources);
         });
         return started ? json(202, status()) : refuse(409, "busy");

@@ -8,12 +8,16 @@ import { cacheGet, cachePut } from "./cache.ts";
  *
  * `key` is one item's key, or `"all"`. Items already in the cache are left alone; the
  * rest go to the enricher in a single call. If that call throws, nothing is cached.
+ *
+ * With `again`, items already in the cache are sent too, and a new answer replaces the
+ * old one. A rerun that throws leaves the old answer where it was.
  */
 export async function enrichOnDemand(
   ctx: Context,
   sources: Source<any>[],
   enricherId: string,
   key: string,
+  opts: { again?: boolean } = {},
 ): Promise<{ ran: number; cached: number }> {
   const source = sources.find((s) => s.enrichers?.some((e) => e.id === enricherId));
   const enricher = source?.enrichers?.find((e) => e.id === enricherId);
@@ -25,7 +29,7 @@ export async function enrichOnDemand(
   const items = enricher.items(envelope.data, ctx).filter((item) => key === "all" || item.key === key);
   if (items.length === 0) throw new Error(`nothing to enrich for ${key}`);
 
-  const waiting = items.filter((item) => cacheGet(ctx, enricher.id, item.hash) === undefined);
+  const waiting = opts.again ? items : items.filter((item) => cacheGet(ctx, enricher.id, item.hash) === undefined);
   const cached = items.length - waiting.length;
   if (waiting.length === 0) return { ran: 0, cached };
 

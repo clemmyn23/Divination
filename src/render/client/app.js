@@ -419,7 +419,9 @@
       pending = { button: enrich, label: enrich.textContent, since: lastFinishedAt };
       enrich.textContent = "Asking Claude…";
       enrich.disabled = true;
-      const started = await act("/api/enrich", { enricher: enrich.dataset.enrich, key: enrich.dataset.key });
+      // A rerun button (data-again) asks for an item that already has an answer.
+      const again = "again" in enrich.dataset ? { again: true } : {};
+      const started = await act("/api/enrich", { enricher: enrich.dataset.enrich, key: enrich.dataset.key, ...again });
       if (!started) restorePending();
     }
   });
