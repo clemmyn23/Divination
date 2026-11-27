@@ -9,6 +9,7 @@
  *   p.fix-note          what the last attempt at fixing a PR did
  *   span.tag            a small label (rotation, direct, optional)
  *   strong.who          someone's name on a meta line
+ *   span.adds, span.dels   a PR's size: lines added and lines removed
  *   span.ci-pass | ci-fail | ci-pending
  *   h4.conv             a conversation name (alerts panel)
  *   ul.alert-rows > li.alert.state-firing | state-resolved | state-info
@@ -262,6 +263,15 @@
 /* Raised by a crew member: may bypass the crew's review. */
 .tag.crew {
   background: var(--mint);
+}
+
+/* A PR's size: what it adds and what it takes away. */
+.adds {
+  color: var(--good);
+}
+
+.dels {
+  color: var(--bad);
 }
 
 .ci-pass {

@@ -18,8 +18,12 @@ It shows:
   can skip set aside.
 - **My PRs**: the pull requests you raised, the ones waiting on you first.
 - **Slack**: today's threads in the channels and direct messages you follow, the ones
-  waiting on you first.
+  waiting on you first. Standard emoji are drawn; a workspace's own emoji are pictures the
+  page cannot load, so they are left out.
 - **Alerts**: each alert channel's alerts today, counted by title.
+
+The Review queue, My PRs and Slack are split into sections. Click a section's heading to
+fold it shut; it stays shut in that browser until you open it again.
 
 It reads, with two exceptions, each a button you press yourself: **Fix** pushes a commit to
 one of your own PRs, and **Post** in a drafted review's dialog posts the notes you ticked to
@@ -92,9 +96,6 @@ none of those reach Needs you. "Pushed" is read from the time of the PR's newest
 Comments from an app's bot account never count; a review bot that signs in as a person
 does, until you add its username to `github.mine.ignoreCommenters`.
 
-Each of those sections folds shut when you click its heading, and stays shut in that
-browser until you open it again.
-
 The review queue's own rules for a review crew (rotation, crew members, signals from the
 review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply only when
 `github.crew` is filled in.
@@ -148,6 +149,7 @@ a dialog:
   selected to start, whatever the draft says.
 - **Post** sends one review to the PR, under your name. The button says what it will send
   ("Post 3 comments · Approve"), and there is no second question.
+- Afterwards the PR says when its review was posted, with the day if that was not today.
 
 Each ticked note becomes a comment on its file and line. A note whose line is not part of
 the PR's diff goes in the overall comment instead, under its file and line. A review is

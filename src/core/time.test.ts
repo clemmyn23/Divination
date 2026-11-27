@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { endOfDay, hhmm, isoDate, parseHhmm, startOfDay, withinActiveHours } from "./time.ts";
+import { endOfDay, hhmm, isoDate, parseHhmm, startOfDay, when, withinActiveHours } from "./time.ts";
 
 const at = (iso: string) => Date.parse(iso);
 const SYDNEY = "Australia/Sydney"; // UTC+11 in November
@@ -55,4 +55,13 @@ test("the local date and the next local midnight", () => {
   assert.equal(endOfDay(at("2026-11-24T13:00:00Z"), SYDNEY), at("2026-11-25T13:00:00Z"));
   // Sydney's clocks go forward on 4 October 2026, so that day is 23 hours long.
   assert.equal(endOfDay(at("2026-10-03T14:00:00Z"), SYDNEY) - at("2026-10-03T14:00:00Z"), 23 * 3_600_000);
+});
+
+test("a time today is just the clock; a time on another day says which day", () => {
+  const now = at("2026-11-27T03:00:00Z"); // Friday 14:00 in Sydney
+  assert.equal(when(at("2026-11-27T01:05:00Z"), now, SYDNEY), "12:05");
+  assert.equal(when(at("2026-11-26T03:05:00Z"), now, SYDNEY), "Thu 26 Nov 14:05");
+  assert.equal(when(at("2026-11-02T22:00:00Z"), now, SYDNEY), "Tue 3 Nov 09:00");
+  // Late on Thursday in UTC is already Friday in Sydney: that is today.
+  assert.equal(when(at("2026-11-26T13:30:00Z"), now, SYDNEY), "00:30");
 });
