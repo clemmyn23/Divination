@@ -74,7 +74,7 @@ test("each PR is a title and one meta line", () => {
   assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/1" target="_blank" rel="noopener noreferrer">Change 1</a>'));
   assert.ok(
     html.includes(
-      '<p class="meta">o/r#1 · ann · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · touches billing</p>',
+      '<p class="meta">o/r#1 · <strong class="who">ann</strong> · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · touches billing</p>',
     ),
     html,
   );
@@ -182,7 +182,7 @@ test("PRs that need you become needs-you items with their reasons", () => {
       key: "o/r#1",
       title: "Change 1",
       reason: "touches billing, rotation, CI passing",
-      parts: ["ann", { tag: "rotation" }, "touches billing, CI passing"],
+      parts: [{ who: "ann" }, { tag: "rotation" }, "touches billing, CI passing"],
       url: "https://git.example.com/o/r/pull/1",
       at: NOW - 86_400_000,
       doneKey: "pr:o/r#1@aaa111",
@@ -191,7 +191,7 @@ test("PRs that need you become needs-you items with their reasons", () => {
       key: "o/r#2",
       title: "Change 2",
       reason: "quick win, CI passing",
-      parts: ["ann", { tag: "direct" }, "quick win, CI passing"],
+      parts: [{ who: "ann" }, { tag: "direct" }, "quick win, CI passing"],
       url: "https://git.example.com/o/r/pull/2",
       at: NOW - 86_400_000,
       doneKey: "pr:o/r#2@sha2",
@@ -256,9 +256,9 @@ test("a PR's needs-you item names its author, then carries the same lozenges as 
   };
   const [crew, plain] = github.attention(data, view);
   // The author sits beside the crew lozenge; "rotation" is a lozenge, so it is not said again in words.
-  assert.deepEqual(crew!.parts, ["kit", { tag: "raised by crew member", kind: "crew" }, { tag: "rotation" }, "touches billing, CI passing"]);
+  assert.deepEqual(crew!.parts, [{ who: "kit" }, { tag: "raised by crew member", kind: "crew" }, { tag: "rotation" }, "touches billing, CI passing"]);
   assert.equal(crew!.reason, "touches billing, rotation, CI passing, raised by crew member"); // the plain words are unchanged
-  assert.deepEqual(plain!.parts, ["ann", { tag: "rotation" }]); // nothing left to say in words
+  assert.deepEqual(plain!.parts, [{ who: "ann" }, { tag: "rotation" }]); // nothing left to say in words
 });
 
 test("validate checks every field the panel prints, so a half-shaped file is refused before it is drawn", () => {
@@ -311,9 +311,23 @@ test("the dialog lists the summary and every note, each with a checkbox and its 
   assert.equal((html.match(/data-copy-text/g) ?? []).length, 2); // one per note; the summary has none
 });
 
+test("in the dialog a note's severity is a lozenge of its own, so a blocker stands out from a nit", () => {
+  const html = drafted();
+  const dialog = html.slice(html.indexOf("<dialog"), html.indexOf("</dialog>"));
+  assert.ok(dialog.includes('<div class="finding" data-severity="blocker">'));
+  assert.ok(dialog.includes('<span class="where">src/a.ts:3</span></label> <span class="severity">blocker</span>'));
+  assert.ok(dialog.includes('<div class="finding" data-severity="nit">'));
+  assert.ok(dialog.includes('<span class="where">src/b.ts:9-12</span></label> <span class="severity">nit</span>'));
+  // The summary has no severity: it says where it goes instead.
+  assert.ok(dialog.includes('<div class="finding">\n<div class="note-head"><label class="pick"><input type="checkbox" autocomplete="off" data-pick="summary"> <span class="where">Summary</span></label> <span class="hint">goes in the overall comment</span></div>'));
+  // Each note's Copy button sits in its heading row, beside what it copies.
+  assert.equal((dialog.match(/<span class="severity">[a-z-]+<\/span>\n<button type="button" data-copy-text>Copy<\/button><\/div>/g) ?? []).length, 2);
+});
+
 test("nothing is ticked to start, and Comment is the kind selected whatever the draft says", () => {
   const html = drafted();
   assert.ok(html.includes("Draft says: request changes"));
+  assert.ok(html.includes('<p class="meta">o/r#1 · <strong class="who">ann</strong> · <span class="tag">Draft says: request changes</span>')); // the author stands out here too
   assert.equal((html.match(/ checked/g) ?? []).length, 1);
   assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="COMMENT" checked>'));
   assert.ok(html.includes('<input type="radio" autocomplete="off" name="event:o/r#1@aaa111" value="APPROVE">'));

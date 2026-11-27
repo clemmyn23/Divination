@@ -290,21 +290,21 @@ test("a needs-you item that is marked done is neither listed nor counted; the re
   assert.ok(html.includes('<li>Third <span class="reason">because</span></li>'));
 });
 
-test("a needs-you item can say why in parts: plain words and lozenges, in the order given, all escaped", () => {
+test("a needs-you item can say why in parts: a name in bold, plain words and lozenges, in the order given, all escaped", () => {
   const source = fakeSource({
     attention: () => [
       {
         key: "1",
         title: "A change",
         reason: "plain words that are not drawn when there are parts",
-        parts: ["ann<b>", { tag: "raised by <crew>", kind: "crew" }, { tag: "rotation" }, "large change & more"],
+        parts: [{ who: "ann<b>" }, { tag: "raised by <crew>", kind: "crew" }, { tag: "rotation" }, "large change & more"],
       },
     ],
   });
   const html = renderPage({ view, entries: [{ source, envelope: ok({}) }] });
   assert.ok(
     html.includes(
-      '<li>A change <span class="reason">ann&lt;b&gt; <span class="tag crew">raised by &lt;crew&gt;</span> <span class="tag">rotation</span> large change &amp; more</span></li>',
+      '<li>A change <span class="reason"><strong class="who">ann&lt;b&gt;</strong> <span class="tag crew">raised by &lt;crew&gt;</span> <span class="tag">rotation</span> large change &amp; more</span></li>',
     ),
   );
 });

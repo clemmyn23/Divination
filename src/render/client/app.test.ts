@@ -156,6 +156,8 @@ interface Options {
   reviews?: string;
   /** The fingerprint of the draft in the review's dialog. */
   draftPrint?: string;
+  /** The sections localStorage says I folded shut. */
+  folds?: string;
   storageBroken?: boolean;
   /** What the server answers. `null` means the server cannot be reached. */
   status?: Status | null;
@@ -199,6 +201,11 @@ function page(stored: string | null, opts: Options = {}) {
   const fold = new FakeElement("fold-prs");
   fold.panelId = "prs";
   fold.className = "stale done";
+  // A section of My PRs under its heading: drawn open, as the page always draws it.
+  const section = new FakeElement("section-fix");
+  section.panelId = "my-prs";
+  section.dataset.fold = "fix";
+  section.open = true;
   const session = new Map<string, string>();
   if (opts.session !== undefined) session.set("divination-view", opts.session);
   if (opts.reviews !== undefined) session.set("divination-review", opts.reviews);
@@ -207,6 +214,7 @@ function page(stored: string | null, opts: Options = {}) {
 
   const store = new Map<string, string>();
   if (stored !== null) store.set("divination-theme", stored);
+  if (opts.folds !== undefined) store.set("divination-folds", opts.folds);
   let parsed = false; // the script runs in <head>, before the buttons exist
 
   const server = {
@@ -289,6 +297,7 @@ function page(stored: string | null, opts: Options = {}) {
         if (selector === "button[data-fix]") return [fixAll, fix];
         if (selector === ".panel-body") return [body];
         if (selector === "details.stale") return [fold];
+        if (selector === "details.fold") return [section];
         if (selector === "dialog.review-dialog") return [review.dialog];
         return [];
       },
@@ -309,6 +318,12 @@ function page(stored: string | null, opts: Options = {}) {
     tick,
     body,
     fold,
+    section,
+    /** A section was folded shut or opened, as the browser reports it. */
+    async toggled(target: FakeElement) {
+      for (const fn of listeners.toggle ?? []) await fn({ target });
+      await settle();
+    },
     session,
     review,
     copied,
@@ -633,6 +648,66 @@ test("with nothing remembered, or storage blocked or holding junk, the page stil
   await blocked.finishParsing();
   await blocked.click(blocked.tick);
   assert.equal(blocked.reloads, 1);
+});
+
+test("a section I fold shut stays shut on later loads, until I open it again", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  assert.equal(p.section.open, true);
+
+  p.section.open = false;
+  await p.toggled(p.section);
+  assert.equal(p.store.get("divination-folds"), '["my-prs:fix"]');
+
+  const next = page(null, { folds: p.store.get("divination-folds")! });
+  await next.finishParsing();
+  assert.equal(next.section.open, false);
+
+  next.section.open = true;
+  await next.toggled(next.section);
+  assert.equal(next.store.get("divination-folds"), "[]");
+});
+
+test("the page drawing its sections open is not me opening them: what I shut stays remembered", async () => {
+  const p = page(null, { folds: '["my-prs:fix"]' });
+  // While it reads the page, the browser reports each section drawn open as a toggle.
+  await p.toggled(p.section);
+  assert.equal(p.store.get("divination-folds"), '["my-prs:fix"]');
+  await p.finishParsing();
+  assert.equal(p.section.open, false);
+  // Shutting it then reports one more toggle, which changes nothing.
+  await p.toggled(p.section);
+  assert.equal(p.store.get("divination-folds"), '["my-prs:fix"]');
+});
+
+test("shutting one section leaves the others I shut alone, even ones not on the page today", async () => {
+  const p = page(null, { folds: '["my-prs:draft"]' });
+  await p.finishParsing();
+  assert.equal(p.section.open, true);
+  p.section.open = false;
+  await p.toggled(p.section);
+  assert.equal(p.store.get("divination-folds"), '["my-prs:draft","my-prs:fix"]');
+});
+
+test("a fold that is not a section is not remembered this way, and blocked or junk storage breaks nothing", async () => {
+  const p = page(null);
+  await p.finishParsing();
+  p.fold.open = true;
+  await p.toggled(p.fold); // the old or done accordion
+  assert.equal(p.store.get("divination-folds"), undefined);
+
+  const junk = page(null, { folds: "{not json" });
+  await junk.finishParsing();
+  assert.equal(junk.section.open, true);
+  junk.section.open = false;
+  await junk.toggled(junk.section);
+  assert.equal(junk.store.get("divination-folds"), '["my-prs:fix"]');
+
+  const blocked = page(null, { storageBroken: true });
+  await blocked.finishParsing();
+  blocked.section.open = false;
+  await blocked.toggled(blocked.section);
+  assert.equal(blocked.liveToggle.textContent, "Pause");
 });
 
 // Activity: the breakdown on hover and the log behind a click

@@ -163,16 +163,21 @@ export interface Lozenge {
   kind?: "crew";
 }
 
+/** Someone's name, drawn in bold. */
+export interface Who {
+  who: string;
+}
+
 export interface AttentionItem {
   key: string;
   title: string;
   /** Why this is waiting, in plain words. */
   reason: string;
   /**
-   * The same, for the page, when some of it reads better as lozenges: plain words and
-   * lozenges, drawn in this order in place of `reason`.
+   * The same, for the page, when some of it reads better as lozenges: plain words, names
+   * and lozenges, drawn in this order in place of `reason`.
    */
-  parts?: (string | Lozenge)[];
+  parts?: (string | Lozenge | Who)[];
   url?: string;
   /** When this started waiting, in epoch ms. Old items are folded away; undated ones never are. */
   at?: number;

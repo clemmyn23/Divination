@@ -3,6 +3,13 @@
 A small dashboard for the work day, served from your own laptop. One page, no scrolling,
 with a crystal ball that worries on your behalf.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/dashboard-dark.png">
+  <img src="docs/dashboard.png" alt="The Divination dashboard: a top bar counting what needs you, then panels for Needs you, Today, Review queue, My PRs, Slack and Alerts">
+</picture>
+
+*The sample page, drawn from invented data by `pnpm divination render --fixtures`.*
+
 It shows:
 
 - **Needs you**: everything waiting on you, from every source, counted in the top bar.
@@ -85,6 +92,9 @@ none of those reach Needs you. "Pushed" is read from the time of the PR's newest
 Comments from an app's bot account never count; a review bot that signs in as a person
 does, until you add its username to `github.mine.ignoreCommenters`.
 
+Each of those sections folds shut when you click its heading, and stays shut in that
+browser until you open it again.
+
 The review queue's own rules for a review crew (rotation, crew members, signals from the
 review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply only when
 `github.crew` is filled in.
@@ -129,8 +139,9 @@ anything but TeamCity, or re-run a build. The same thing from a terminal is
 A drafted review sits folded under its PR in the Review queue. **Open review** opens it in
 a dialog:
 
-- Each note has a checkbox and its text, which you can edit. Nothing is ticked to start:
-  tick the notes that are real problems and leave the rest.
+- Each note is a card with a checkbox, its file and line, its severity and its text, which
+  you can edit. Nothing is ticked to start: tick the notes that are real problems and
+  leave the rest.
 - The draft's summary is one more entry. Ticked, it goes in the review's overall comment.
 - Beside the Post button is a box for a message of your own, which goes first, and a
   choice of **Comment**, **Approve** or **Request changes**. Comment is always the one

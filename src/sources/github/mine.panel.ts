@@ -1,5 +1,6 @@
 import type { Panel, View } from "../../core/types.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
+import { fold } from "../../render/fold.ts";
 import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import { tried } from "./fix/rules.ts";
@@ -99,11 +100,12 @@ export function myPrsPanel(data: GithubData, view: View): Panel {
   // Fix all sits under the heading of the last group it covers: "To fix", or "Needs you" when that is all there is.
   const toFix = openFixable(all, view);
   const fixAllUnder = toFix.length < 2 ? undefined : MINE_TO_FIX.findLast((on) => toFix.some((pr) => pr.waits.on === on));
-  const fixAll = `\n<button data-fix="all" title="Fixes ${toFix.length} PRs, one at a time">Fix all</button>`;
+  const fixAll = `<button data-fix="all" title="Fixes ${toFix.length} PRs, one at a time">Fix all</button>\n`;
 
+  // Each group folds shut under its heading, so a long one can be put out of the way.
   const groups = GROUPS.map(({ title, on }) => {
     const prs = fresh.filter((pr) => pr.waits.on === on);
-    return prs.length === 0 ? "" : `<h3 class="group">${title} · ${prs.length}</h3>${on === fixAllUnder ? fixAll : ""}\n${list(prs, view)}`;
+    return prs.length === 0 ? "" : fold(on, `${title} · ${prs.length}`, `${on === fixAllUnder ? fixAll : ""}${list(prs, view)}`);
   }).filter((html) => html !== "");
 
   if (stale.length > 0) groups.push(staleAccordion(stale.length, list(stale, view)));

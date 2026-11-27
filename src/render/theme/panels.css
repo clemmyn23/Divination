@@ -2,11 +2,13 @@
  * Panels and what goes inside them. Sources build their panel HTML from these classes:
  *
  *   h3.group            a heading inside a panel ("Needs you", a Slack group)
+ *   details.fold        a section that its h3.group heading folds shut
  *   ul.items > li.item  a list of things; li.thread and li.pr are items too
  *   li.needs-you        an item that is waiting on you
  *   p.meta              the small line under an item
  *   p.fix-note          what the last attempt at fixing a PR did
  *   span.tag            a small label (rotation, direct, optional)
+ *   strong.who          someone's name on a meta line
  *   span.ci-pass | ci-fail | ci-pending
  *   h4.conv             a conversation name (alerts panel)
  *   ul.alert-rows > li.alert.state-firing | state-resolved | state-info
@@ -147,6 +149,28 @@
   color: var(--ink-soft);
 }
 
+/* A section that its heading folds shut (see src/render/fold.ts). */
+
+.fold > summary {
+  margin: 10px 0 2px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.fold > summary > .group {
+  display: inline;
+  margin: 0;
+}
+
+.fold > summary:hover,
+.fold > summary:hover > .group {
+  color: var(--accent);
+}
+
+.fold > summary::marker {
+  font-size: 9px;
+}
+
 .conv {
   margin: 8px 0 1px;
   font-size: 12px;
@@ -212,6 +236,12 @@
   margin: 1px 0 0;
   font-size: 11px;
   color: var(--ink-soft);
+}
+
+/* Someone's name on a line of small print. */
+.who {
+  font-weight: 700;
+  color: var(--ink);
 }
 
 .tag {
@@ -521,76 +551,233 @@ button[data-fix="all"] {
 /* A drafted review opened up: notes that scroll, and a footer that stays put. */
 
 .review-dialog {
-  width: min(860px, 94vw);
+  width: min(820px, 94vw);
   max-height: 88vh;
   padding: 0;
-  border: 0;
-  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  border-radius: 18px;
   color: var(--ink);
   background: var(--card);
-  box-shadow: var(--shadow);
+  box-shadow: 0 24px 60px rgba(20, 14, 34, 0.35);
   font-size: 13px;
   font-weight: 400;
   text-align: left;
+  overflow: hidden;
 }
 
 /* Only while open: a dialog that is given a display of its own is never hidden. */
 .review-dialog[open] {
   display: flex;
   flex-direction: column;
+  animation: review-in 140ms ease-out;
+}
+
+@keyframes review-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .review-dialog[open] {
+    animation: none;
+  }
 }
 
 .review-dialog::backdrop {
-  background: rgba(20, 14, 34, 0.55);
+  background: rgba(20, 14, 34, 0.5);
+  backdrop-filter: blur(3px);
 }
+
+/* The heading: the PR's title over one quiet line, on the review queue's tint. */
 
 .review-dialog h2 {
   margin: 0;
-  padding: 8px 14px;
-  font-size: 13.5px;
+  padding: 14px 18px 3px;
+  font-size: 16px;
+  line-height: 1.25;
   background: var(--blush);
 }
 
 .review-dialog > .meta {
   margin: 0;
-  padding: 6px 14px;
+  padding: 0 18px 12px;
+  font-size: 11.5px;
+  color: var(--ink-soft);
+  background: var(--blush);
 }
+
+.review-dialog > .meta .tag {
+  background: var(--card);
+}
+
+/* The notes: one card each, on the page's paper. */
 
 .review-notes {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--paper);
 }
 
 .review-dialog .finding {
-  padding: 8px 8px 10px;
+  flex: none;
+  padding: 8px 10px 6px 12px;
+  border: 1.5px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  /* A stripe down the left says how much the note matters. */
+  box-shadow: inset 4px 0 0 var(--stripe, var(--line));
+  transition: border-color 120ms;
+}
+
+.review-dialog .finding[data-severity="blocker"] {
+  --stripe: var(--bad);
+}
+
+.review-dialog .finding[data-severity="should-fix"] {
+  --stripe: var(--warn);
+}
+
+/* A ticked note is going out: its card says so. */
+.review-dialog .finding:has(input:checked) {
+  border-color: var(--accent);
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
 }
 
 .review-dialog .pick {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
   cursor: pointer;
 }
 
 .review-dialog .pick .where {
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* The summary is not a place in the code, so its name is in the page's own letters. */
+.review-dialog .finding:not([data-severity]) .where {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* The same round tick as the lines on the page, in the accent: these go to GitHub. */
+.review-dialog input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  display: grid;
+  place-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid var(--ink-soft);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.review-dialog input[type="checkbox"]::after {
+  content: "✓";
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: transparent;
+}
+
+.review-dialog input[type="checkbox"]:hover {
+  border-color: var(--accent);
+}
+
+.review-dialog input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.review-dialog input[type="checkbox"]:checked::after {
+  color: var(--accent-ink);
+}
+
+.review-dialog input:focus-visible,
+.review-dialog textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.severity,
+.note-head .hint {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  background: var(--paper);
+}
+
+.note-head .hint {
+  padding: 0;
+  font-weight: 400;
+  font-style: italic;
+  background: none;
+}
+
+[data-severity="blocker"] .severity {
+  color: var(--bad);
+  background: var(--blush);
+}
+
+[data-severity="should-fix"] .severity {
+  color: var(--warn);
+  background: var(--butter);
+}
+
+/* Copy is the quietest thing in the row: it sits at the far end and has no border. */
+.review-dialog button[data-copy-text] {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-color: transparent;
+  font-size: 11px;
+  color: var(--ink-soft);
+  background: transparent;
+}
+
+.review-dialog button[data-copy-text]:hover {
+  color: var(--accent);
 }
 
 .review-dialog textarea {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  margin: 4px 0;
-  padding: 6px 8px;
-  border: 1px solid var(--line);
+  margin: 2px 0 0;
+  padding: 5px 6px;
+  border: 1px solid transparent;
   border-radius: 8px;
   color: var(--ink);
-  background: var(--paper);
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
-  font-size: 12px;
-  line-height: 1.45;
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
   resize: vertical;
   /* As tall as its words, where the browser can do that; the rows are the fallback. */
   field-sizing: content;
@@ -598,41 +785,105 @@ button[data-fix="all"] {
   max-height: 40vh;
 }
 
-/* A note that is not ticked is not going anywhere: its text steps back. */
-.review-dialog .finding:not(:has(input:checked)) textarea {
-  opacity: 0.6;
+.review-dialog textarea:hover,
+.review-dialog textarea:focus {
+  border-color: var(--line);
+  background: var(--paper);
 }
 
+/* A note that is not ticked is not going anywhere: its text steps back. */
+.review-dialog .finding:not(:has(input:checked)) textarea {
+  color: var(--ink-soft);
+}
+
+/* The footer: my own message across the top, then the kind of review and the buttons. */
+
 .review-post {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
+  gap: 10px 8px;
+  padding: 12px 14px;
   border-top: 1px solid var(--line);
 }
 
 .review-post textarea {
-  flex: 1 1 220px;
-  width: auto;
+  grid-column: 1 / -1;
   margin: 0;
-  font-family: inherit;
+  padding: 7px 10px;
+  border-color: var(--line);
+  border-radius: 10px;
+  background: var(--paper);
 }
 
+/* The kind of review is one pill with three places; the chosen one is raised. */
 .review-kind {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
+  justify-self: start;
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper);
 }
 
 .review-kind label {
+  position: relative;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-soft);
   cursor: pointer;
+}
+
+/* The radio button itself is hidden but still takes the keyboard. */
+.review-kind input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.review-kind label:hover {
+  color: var(--ink);
+}
+
+.review-kind label:has(input:checked) {
+  color: var(--ink);
+  background: var(--card);
+  box-shadow: 0 1px 3px rgba(20, 14, 34, 0.18);
+}
+
+.review-kind label:has(input[value="APPROVE"]:checked) {
+  color: var(--good);
+  background: var(--mint);
+}
+
+.review-kind label:has(input[value="REQUEST_CHANGES"]:checked) {
+  color: var(--bad);
+  background: var(--blush);
+}
+
+.review-kind label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.review-post button {
+  padding: 5px 14px;
+}
+
+/* Post is the one loud button: it is the one that leaves this machine. */
+.review-post button[data-review-post] {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 .review-status {
   margin: 0;
-  padding: 0 14px 10px;
+  padding: 0 16px 12px;
   font-size: 12px;
   color: var(--ink-soft);
 }
