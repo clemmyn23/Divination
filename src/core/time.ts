@@ -90,6 +90,20 @@ export function hhmm(ms: number, tz: string): string {
   return `${two(p.hour)}:${two(p.minute)}`;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * When something happened, for a line of small print: the clock alone if it was today in
+ * that timezone, otherwise the day as well ("Thu 26 Nov 14:05"), so that yesterday's time
+ * does not read as today's.
+ */
+export function when(ms: number, now: number, tz: string): string {
+  const clock = hhmm(ms, tz);
+  if (isoDate(ms, tz) === isoDate(now, tz)) return clock;
+  const p = zoned(ms, tz);
+  return `${WEEKDAYS[p.weekday]} ${p.day} ${MONTHS[p.month - 1]} ${clock}`;
+}
+
 /** Minutes since midnight for an `HH:MM` string. */
 export function parseHhmm(s: string): number {
   const [h, m] = s.split(":");

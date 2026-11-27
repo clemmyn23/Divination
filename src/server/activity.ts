@@ -132,7 +132,8 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           break;
         }
 
-        // Claude reading a source that is otherwise fed by hand, after Refresh now.
+        // Claude reading a source that is otherwise fed by hand: after Refresh now, on the
+        // timer, or from the source's own Read now button.
         case "feed-start": {
           const id = String(f.source);
           const state = states.get(id);
@@ -159,6 +160,11 @@ export function createActivity(now: () => number, initial: SourceState[]) {
           say(`${titleOf(id)}: Claude could not read it (${seconds(f.ms)}): ${error}`, "error");
           break;
         }
+
+        // My choice in the refresh options.
+        case "reads":
+          say(`${titleOf(String(f.source))}: Refresh now ${f.on === true ? "will ask" : "will no longer ask"} Claude to read it`);
+          break;
 
         case "feed-skip":
           say(

@@ -215,7 +215,7 @@ function chat(
 const chats = [
   chat("C1", 1, 35, "Sam, can you confirm the rollout order for the tax service before 3?", ["Ana", "Kit"], 4, "mentioned you"),
   chat("D1", 3, 20, "Do you have ten minutes after planning?", ["Ana"], 1, "waiting on your reply"),
-  chat("C1", 2, 50, "Staging is back after the certificate renewal.", ["Rio"], 2),
+  chat("C1", 2, 50, "Staging is back after the certificate renewal. :white_check_mark:", ["Rio"], 2),
   chat("C5", 8, 70, "The dashboard loading animation is in the design file now, ring version.", ["Yui"], 3),
   chat("C5", 9, 95, "Loading state: do we want the ring or the dot for the default?", ["Yui", "Mo"], 6),
   chat("C6", 10, 120, "Retro notes are up. Two actions carried over from last sprint.", ["Jo"], 1),
@@ -223,7 +223,7 @@ const chats = [
   chat("C3", 11, 80, "Heads up: the shared button component changes its focus ring next release.", ["Lee"], 2),
   chat("C7", 12, 100, "Who is on review rotation next week? I am out Thursday and Friday.", ["Ana", "Rio"], 5),
   chat("C8", 13, 60, "Lift 2 is out of service until Friday. Use the goods lift for deliveries.", ["Pat"], 1),
-  chat("C8", 14, 110, "Friday lunch is dumplings. Add dietary needs to the thread by Thursday.", ["Pat", "Jo", "Kit"], 12),
+  chat("C8", 14, 110, ":dumpling: Friday lunch is dumplings. Add dietary needs to the thread by Thursday. :office-cat:", ["Pat", "Jo", "Kit"], 12),
   chat("C9", 15, 30, "Prune the noise: the deploy bot now posts one message per release.", ["Sam", "Rio"], 4),
 ];
 

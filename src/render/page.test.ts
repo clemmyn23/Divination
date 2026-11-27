@@ -317,6 +317,46 @@ test("the status is a button with a hover breakdown beside it and a log dialog b
   assert.ok(html.indexOf('id="activity-pop"') < html.indexOf("</header>")); // the breakdown sits with the controls
 });
 
+test("beside Refresh now is a cog that opens the refresh options: each source Claude reads, with a switch and a Read now button", () => {
+  const read = fakeSource({ id: "fake", title: "Fake <b>", feed: async () => ({}) });
+  const hourly = fakeSource({ id: "other", title: "Other", feed: async () => ({}) });
+  const fetched = fakeSource({ id: "fetched", title: "Fetched", feed: async () => ({}) }); // not on the inbox transport
+  const silent = fakeSource({ id: "silent", title: "Silent" }); // on it, with no way to ask
+  const config = {
+    ...view.config,
+    fake: { transport: "inbox" },
+    other: { transport: "inbox" },
+    silent: { transport: "inbox" },
+    claudeReads: { ...view.config.claudeReads, everyMinutes: { fake: 30, fetched: 5 } },
+  };
+  const html = renderPage({ view: { ...view, config }, entries: [read, hourly, fetched, silent].map((source) => ({ source, envelope: ok({}) })) });
+
+  const cog = '<button id="refresh-options-open" type="button" title="Refresh options" aria-label="Refresh options" aria-haspopup="dialog" aria-controls="refresh-options">⚙</button>';
+  assert.ok(html.includes(`<button id="refresh-now" type="button">Refresh now</button>\n${cog}`));
+
+  const dialog = html.slice(html.indexOf('<dialog id="refresh-options"'), html.indexOf("</dialog>", html.indexOf('<dialog id="refresh-options"')));
+  assert.ok(dialog.includes('<h2 id="refresh-options-title">Refresh options</h2>'));
+  assert.ok(
+    dialog.includes(`<li class="feed">
+<label><input type="checkbox" autocomplete="off" data-reads="fake"> <strong>Fake &lt;b&gt;</strong> <span class="hint">on Refresh now</span></label>
+<span class="meta">Timer: every 30 minutes</span>
+<button type="button" data-feed="fake">Read now</button>
+</li>`),
+  );
+  assert.ok(dialog.includes('<input type="checkbox" autocomplete="off" data-reads="other">'));
+  assert.ok(dialog.includes('<span class="meta">Timer: off</span>\n<button type="button" data-feed="other">Read now</button>'));
+  // Only the sources Claude reads are listed.
+  assert.ok(!dialog.includes("Fetched") && !dialog.includes("Silent"));
+  assert.ok(dialog.includes('<button id="refresh-options-close" type="button">Close</button>'));
+});
+
+test("with no source for Claude to read, the refresh options say so", () => {
+  const html = renderPage({ view, entries: [{ source: fakeSource(), envelope: ok({}) }] });
+  assert.ok(html.includes('id="refresh-options-open"'));
+  assert.ok(html.includes('<p class="quiet">No source is read by Claude: every one is fetched directly.</p>'));
+  assert.ok(!html.includes("data-reads=") && !html.includes("data-feed="));
+});
+
 test("a source whose panel or needs-you list cannot be drawn shows an error panel; the rest of the page is unharmed", () => {
   const broken = fakeSource({
     id: "broken",

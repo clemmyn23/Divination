@@ -136,7 +136,11 @@ test("the example config in the repo loads over the defaults", () => {
 
 test("asking Claude on Refresh now is off by default, throttled to two minutes, and its settings are checked", () => {
   const cfg = loadConfig(tempRoot());
-  assert.deepEqual(cfg.claudeReads, { onRefresh: false, throttleMinutes: 2, timeoutMinutes: 10 });
+  assert.deepEqual(cfg.claudeReads, { onRefresh: false, throttleMinutes: 2, timeoutMinutes: 10, everyMinutes: {} }); // nothing is read on the timer unless asked for
+  assert.deepEqual(loadConfig(tempRoot({ claudeReads: { everyMinutes: { slack: 30, calendar: 60 } } })).claudeReads.everyMinutes, { slack: 30, calendar: 60 });
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { everyMinutes: 30 } })), /claudeReads\.everyMinutes/);
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { everyMinutes: { slack: -5 } } })), /claudeReads\.everyMinutes\.slack/);
+  assert.throws(() => loadConfig(tempRoot({ claudeReads: { everyMinutes: { slack: "often" } } })), /claudeReads\.everyMinutes\.slack/);
   assert.equal(loadConfig(tempRoot({ claudeReads: { onRefresh: true, throttleMinutes: 0 } })).claudeReads.throttleMinutes, 0);
   assert.throws(() => loadConfig(tempRoot({ claudeReads: { onRefresh: "yes" } })), /claudeReads\.onRefresh/);
   assert.throws(() => loadConfig(tempRoot({ claudeReads: { throttleMinutes: -1 } })), /claudeReads\.throttleMinutes/);

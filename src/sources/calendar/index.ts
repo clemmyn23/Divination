@@ -1,4 +1,5 @@
 import { HttpError } from "../../core/http.ts";
+import { claudeReadsUnasked } from "../../core/pipeline.ts";
 import { readDropped } from "../../core/store.ts";
 import { isoDate, startOfDay } from "../../core/time.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
@@ -75,7 +76,7 @@ function inboxCheck(ctx: Context): Check {
 
 async function doctor(ctx: Context): Promise<Check[]> {
   if (ctx.config.calendar.transport === "inbox") {
-    return [inboxCheck(ctx), ...(ctx.config.claudeReads.onRefresh ? [await claudeCheck(ctx)] : [])];
+    return [inboxCheck(ctx), ...(claudeReadsUnasked(ctx.config, "calendar") ? [await claudeCheck(ctx)] : [])];
   }
   if (!(await ctx.secrets.get(SECRET))) {
     return [{ name: "address", ok: false, detail: "no calendar address is stored", fix: SET_IT }];

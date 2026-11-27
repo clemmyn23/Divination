@@ -194,4 +194,10 @@ test("fed by hand, doctor also checks the Claude CLI when Refresh now is set to 
 
   const on = await calendar.doctor(contextWith({ calendar: { transport: "inbox" }, claudeReads: { onRefresh: true } }, { exec }));
   assert.deepEqual(on.map((c) => [c.name, c.ok]), [["inbox file", false], ["claude", false]]);
+
+  // And when the timer is set to have Claude read it, with Refresh now off.
+  const timed = await calendar.doctor(contextWith({ calendar: { transport: "inbox" }, claudeReads: { everyMinutes: { calendar: 60 } } }, { exec }));
+  assert.deepEqual(timed.map((c) => c.name), ["inbox file", "claude"]);
+  const other = await calendar.doctor(contextWith({ calendar: { transport: "inbox" }, claudeReads: { everyMinutes: { slack: 30 } } }, { exec }));
+  assert.deepEqual(other.map((c) => c.name), ["inbox file"]);
 });

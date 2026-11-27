@@ -1,10 +1,11 @@
-import { hhmm } from "../../core/time.ts";
+import { when } from "../../core/time.ts";
 import type { Panel, View } from "../../core/types.ts";
 import { hashOf } from "../../enrich/cache.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
+import { fold } from "../../render/fold.ts";
 import { esc, link, who } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
-import { ciMark, sizeText } from "./marks.ts";
+import { ciMark, sizeMark } from "./marks.ts";
 import { myPrsPanel } from "./mine.panel.ts";
 import { postedKey } from "./review/post.ts";
 import type { Bucket, GithubData, PullRequest } from "./types.ts";
@@ -15,10 +16,11 @@ export const CREW = "raised by crew member";
 /** The buckets that count as waiting on me. */
 export const NEEDS_YOU: Bucket[] = ["review_now", "quick_win", "flagged"];
 
-const GROUPS: { title: string; buckets: Bucket[] }[] = [
-  { title: "Needs you", buckets: NEEDS_YOU },
-  { title: "Waiting on authors", buckets: ["blocked"] },
-  { title: "Covered or low priority", buckets: ["skip", "excluded"] },
+// `id` names the group's section on the page, which remembers the ones I folded shut.
+const GROUPS: { id: string; title: string; buckets: Bucket[] }[] = [
+  { id: "needs-you", title: "Needs you", buckets: NEEDS_YOU },
+  { id: "waiting", title: "Waiting on authors", buckets: ["blocked"] },
+  { id: "covered", title: "Covered or low priority", buckets: ["skip", "excluded"] },
 ];
 
 // Already shown on the meta line by the CI mark and the request tag.
@@ -128,7 +130,7 @@ function meta(pr: PullRequest): string {
   const parts = [
     esc(pr.key),
     who(pr.author),
-    sizeText(pr.additions, pr.deletions),
+    sizeMark(pr.additions, pr.deletions),
     ciMark(pr.ci),
     `<span class="tag">${esc(pr.request)}</span>`,
     ...(pr.byCrew ? [`<span class="tag crew">${CREW}</span>`] : []),
@@ -146,7 +148,7 @@ function item(pr: PullRequest, view: View): string {
     // A draft can be asked for again: a rerun replaces it, and a rerun that fails keeps it.
     if (review) {
       const at = view.done[postedKey(reviewKey(pr))];
-      const posted = at === undefined ? "" : `Posted ${hhmm(at, view.config.me.timezone)}`;
+      const posted = at === undefined ? "" : `Posted ${when(at, view.now, view.config.me.timezone)}`;
       const open = `<button type="button" data-review-open="${esc(reviewKey(pr))}">Open review</button>`;
       extra = `\n${reviewHtml(review)}\n${open}\n${dialogHtml(pr, review, posted)}\n<button ${ask} data-again>Rerun review</button>`;
       if (posted) extra += `\n<p class="fix-note">${posted}</p>`;
@@ -169,13 +171,10 @@ export function githubPanels(data: GithubData, view: View): Panel[] {
   const stale = open.filter((pr) => isOld(pr.createdAt, view));
   const fresh = open.filter((pr) => !isOld(pr.createdAt, view));
 
-  const groups = GROUPS.map(({ title, buckets }) => {
+  const groups = GROUPS.map(({ id, title, buckets }) => {
     const prs = fresh.filter((pr) => buckets.includes(pr.rank.bucket));
     if (prs.length === 0) return "";
-    return `<h3 class="group">${title} · ${prs.length}</h3>
-<ul class="items">
-${prs.map((pr) => item(pr, view)).join("\n")}
-</ul>`;
+    return fold(id, `${title} · ${prs.length}`, `<ul class="items">\n${prs.map((pr) => item(pr, view)).join("\n")}\n</ul>`);
   }).filter((html) => html !== "");
 
   if (stale.length > 0) {

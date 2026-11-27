@@ -4,7 +4,7 @@ import { fold } from "../../render/fold.ts";
 import { esc, link } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import { tried } from "./fix/rules.ts";
-import { ciMark, sizeText } from "./marks.ts";
+import { ciMark, sizeMark } from "./marks.ts";
 import type { GithubData, MyPull, ReviewState, Waits } from "./types.ts";
 
 const GROUPS: { title: string; on: Waits["on"] }[] = [
@@ -30,7 +30,7 @@ function meta(pr: MyPull): string {
   const why = pr.waits.reasons.filter((r) => !SHOWN_ELSEWHERE.includes(r)).join(", ");
   const parts = [
     esc(pr.key),
-    sizeText(pr.additions, pr.deletions),
+    sizeMark(pr.additions, pr.deletions),
     ciMark(pr.ci),
     ...(verdict ? [`<span class="tag">${verdict}</span>`] : []),
     ...(why ? [esc(why)] : []),

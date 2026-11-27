@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
-import { transportOf } from "../core/pipeline.ts";
+import { isClaudeFed, timerMinutes, transportOf } from "../core/pipeline.ts";
 import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
 import { isDone, tick } from "./done.ts";
@@ -142,6 +142,37 @@ ${mascotSvg(count)}
 </div>`;
 }
 
+/**
+ * The refresh options: each source Claude reads, with a switch for whether Refresh now
+ * reads it, what the timer does with it, and a button that reads it now. The switches are
+ * drawn off; the page sets them from the server, which holds my choices.
+ */
+function refreshOptions(entries: PageEntry[], view: View): string {
+  const rows = entries
+    .filter(({ source }) => isClaudeFed(view.config, source))
+    .map(({ source }) => {
+      const every = timerMinutes(view.config, source.id);
+      const timer = every === 0 ? "Timer: off" : `Timer: every ${every === 1 ? "minute" : `${every} minutes`}`;
+      return `<li class="feed">
+<label><input type="checkbox" autocomplete="off" data-reads="${esc(source.id)}"> <strong>${esc(source.title)}</strong> <span class="hint">on Refresh now</span></label>
+<span class="meta">${timer}</span>
+<button type="button" data-feed="${esc(source.id)}">Read now</button>
+</li>`;
+    });
+  const body =
+    rows.length === 0
+      ? '<p class="quiet">No source is read by Claude: every one is fetched directly.</p>'
+      : `<p class="meta">Refresh now always fetches what it can fetch itself. Claude reads these, which takes longer and costs a little each time.</p>
+<ul class="feeds">
+${rows.join("\n")}
+</ul>`;
+  return `<dialog id="refresh-options" aria-labelledby="refresh-options-title">
+<h2 id="refresh-options-title">Refresh options</h2>
+${body}
+<button id="refresh-options-close" type="button">Close</button>
+</dialog>`;
+}
+
 /** The whole page as one self-contained HTML document. */
 export function renderPage(input: { view: View; entries: PageEntry[] }): string {
   const { view, entries } = input;
@@ -173,6 +204,7 @@ ${readFileSync(clientScript, "utf8")}
 <div id="controls">
 <button id="live-toggle" type="button">Pause</button>
 <button id="refresh-now" type="button">Refresh now</button>
+<button id="refresh-options-open" type="button" title="Refresh options" aria-label="Refresh options" aria-haspopup="dialog" aria-controls="refresh-options">⚙</button>
 <button id="live-status" type="button" aria-haspopup="dialog" aria-controls="activity-log"></button>
 <div id="activity-pop" role="status"></div>
 <button id="theme-toggle" type="button" title="Switch between following the system, light and dark">◐ Auto</button>
@@ -192,6 +224,7 @@ ${sections.join("\n")}
 <pre id="activity-lines"></pre>
 <button id="activity-close" type="button">Close</button>
 </dialog>
+${refreshOptions(entries, view)}
 </body>
 </html>
 `;

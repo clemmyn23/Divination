@@ -222,6 +222,16 @@ test("a read held back by the throttle says so, and how long is left", () => {
   assert.equal(a.sources()[0]!.state, "ok");
 });
 
+test("switching a source on or off for Refresh now is a line in the log", () => {
+  const { a } = activity([{ id: "slack", title: "Slack", state: "ok", at: T0, byHand: true }]);
+  a.record("reads", { source: "slack", on: false });
+  a.record("reads", { source: "slack", on: true });
+  assert.deepEqual(a.lines().map((l) => l.text), [
+    "Slack: Refresh now will no longer ask Claude to read it",
+    "Slack: Refresh now will ask Claude to read it",
+  ]);
+});
+
 test("tools a Claude run was refused are named on its closing line", () => {
   const { a } = activity();
   a.record("llm", { ok: true, ms: 1000, model: "haiku", turns: 2, denied: ["Bash", "mcp__x__send"] });

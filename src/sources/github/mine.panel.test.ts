@@ -80,12 +80,12 @@ test("each PR is a title and one meta line: where, size, CI, the review's verdic
   assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/7" target="_blank" rel="noopener noreferrer">My change 7</a>'));
   const metas = html.match(/<p class="meta">.*<\/p>/g);
   assert.deepEqual(metas, [
-    '<p class="meta">o/r#7 · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">approved</span> · ready to merge</p>',
+    '<p class="meta">o/r#7 · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-pass">CI ✓</span> · <span class="tag">approved</span> · ready to merge</p>',
     // The CI mark already says it is failing, so the words do not say it again.
-    '<p class="meta">o/r#8 · +1,200 −34 · <span class="ci-fail">CI ✗</span> · merge conflicts, 2 comments to answer</p>',
-    '<p class="meta">o/r#9 · +1,200 −34 · <span class="ci-pending">CI …</span> · waiting on review</p>',
-    '<p class="meta">o/r#10 · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">changes requested</span> · waiting on a second look</p>',
-    '<p class="meta">o/r#11 · +1,200 −34 · <span class="ci-fail">CI ✗</span></p>',
+    '<p class="meta">o/r#8 · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-fail">CI ✗</span> · merge conflicts, 2 comments to answer</p>',
+    '<p class="meta">o/r#9 · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-pending">CI …</span> · waiting on review</p>',
+    '<p class="meta">o/r#10 · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-pass">CI ✓</span> · <span class="tag">changes requested</span> · waiting on a second look</p>',
+    '<p class="meta">o/r#11 · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-fail">CI ✗</span></p>',
   ]);
 });
 

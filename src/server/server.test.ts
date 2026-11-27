@@ -88,7 +88,7 @@ test("posts without the token are refused and do nothing", async () => {
 test("status reports the timer, the page and the jobs", async () => {
   const { status, body } = await json(req("GET", "/api/status"));
   assert.equal(status, 200);
-  assert.deepEqual(Object.keys(body).sort(), ["fix", "job", "lastJob", "live", "nextTickAt", "renderedAt", "sources", "startedAt"]);
+  assert.deepEqual(Object.keys(body).sort(), ["feeds", "fix", "job", "lastJob", "live", "nextTickAt", "renderedAt", "sources", "startedAt"]);
   assert.deepEqual(body.sources.map((x: { id: string; title: string; state: string }) => [x.id, x.title, x.state]), [["fake", "Fake", "ok"]]);
   assert.equal(body.startedAt, ctx.now());
   assert.deepEqual([body.live, body.nextTickAt, body.job, body.lastJob, body.fix], [true, null, null, null, null]);
@@ -351,7 +351,7 @@ function feeding(local: object, feed: () => Promise<unknown>) {
   return { app: createApp(c, [source], "tok", timers), asked: () => asked };
 }
 
-test("Refresh now asks Claude for a hand-fed source after its plain refresh; the timer never does", async () => {
+test("Refresh now asks Claude for a hand-fed source after its plain refresh; the timer does not, with no interval set", async () => {
   const f = feeding({ claudeReads: { onRefresh: true, throttleMinutes: 0 } }, async () => ({ n: 1 }));
   assert.equal((await f.app.handle(req("POST", "/api/tick"))).status, 202);
   await settle();
@@ -383,6 +383,97 @@ test("a Claude read that fails is what the refresh reports, though the plain ref
   assert.deepEqual([status.lastJob.ok, status.lastJob.error], [false, "Fake: claude failed: Failed to authenticate"]);
   assert.equal(status.sources[0].state, "failed");
   assert.equal(status.sources[0].error, "claude failed: Failed to authenticate");
+});
+
+// The timer can have Claude read a source too, when it was given an interval
+
+test("with an interval set, the timer has Claude read that source after its plain refresh, and not again before it is due", async () => {
+  const f = feeding({ claudeReads: { everyMinutes: { fake: 30 } } }, async () => ({ n: 1 }));
+  await f.app.handle(req("POST", "/api/live", { body: '{"on":true}' })); // going live ticks at once
+  await settle();
+  assert.equal(f.asked(), 1);
+  const log = JSON.parse((await f.app.handle(req("GET", "/api/activity"))).body).lines.map((l: { text: string }) => l.text);
+  assert.ok(log.findIndex((t: string) => /^Refresh finished/.test(t)) < log.indexOf("Fake: asking Claude to read it…"));
+  assert.equal(JSON.parse((await f.app.handle(req("GET", "/api/status"))).body).lastJob.ok, true);
+
+  timers.fire(); // the next tick, with no time gone by
+  await settle();
+  assert.equal(f.asked(), 1);
+});
+
+test("outside working hours the timer collects nothing, and does not ask Claude either", async () => {
+  const f = feeding({ claudeReads: { everyMinutes: { fake: 30 } }, tick: { days: [] } }, async () => ({ n: 1 }));
+  await f.app.handle(req("POST", "/api/live", { body: '{"on":true}' }));
+  await settle();
+  assert.equal(f.asked(), 0);
+});
+
+test("a timed Claude read that fails is what the tick reports", async () => {
+  const f = feeding({ claudeReads: { everyMinutes: { fake: 30 } } }, async () => {
+    throw new Error("claude failed: Failed to authenticate");
+  });
+  await f.app.handle(req("POST", "/api/live", { body: '{"on":true}' }));
+  await settle();
+  const status = JSON.parse((await f.app.handle(req("GET", "/api/status"))).body);
+  assert.deepEqual([status.lastJob.ok, status.lastJob.error], [false, "Fake: claude failed: Failed to authenticate"]);
+});
+
+// One source read now, and choosing what Refresh now reads
+
+test("a source's Read now has Claude read that source at once, whatever Refresh now is set to", async () => {
+  const f = feeding({}, async () => ({ n: 1 })); // claudeReads.onRefresh is off
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"fake"}' }))).status, 202);
+  await settle();
+  assert.equal(f.asked(), 1);
+  const status = JSON.parse((await f.app.handle(req("GET", "/api/status"))).body);
+  assert.deepEqual([status.lastJob.name, status.lastJob.ok], ["feed:fake", true]);
+});
+
+test("Read now is refused for a source Claude cannot read, for nonsense, and without the token", async () => {
+  const f = feeding({ fake: { transport: "api" } }, async () => ({ n: 1 }));
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"fake"}' }))).status, 400);
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"nope"}' }))).status, 400);
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":7}' }))).status, 400);
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"fake"}', headers: { "x-divination-token": "wrong" } }))).status, 403);
+  assert.equal(f.asked(), 0);
+});
+
+test("Read now waits its turn: it is refused while another job runs", async () => {
+  let release = () => {};
+  const f = feeding({}, () => new Promise((resolve) => (release = () => resolve({ n: 1 }))));
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"fake"}' }))).status, 202);
+  await settle();
+  assert.equal((await f.app.handle(req("POST", "/api/feed", { body: '{"source":"fake"}' }))).status, 409);
+  release();
+  await settle();
+});
+
+test("the status lists the sources Claude can read, with what Refresh now and the timer do for each", async () => {
+  const f = feeding({ claudeReads: { onRefresh: true, everyMinutes: { fake: 30 } } }, async () => ({ n: 1 }));
+  const status = JSON.parse((await f.app.handle(req("GET", "/api/status"))).body);
+  assert.deepEqual(status.feeds, [{ id: "fake", title: "Fake", onRefresh: true, everyMinutes: 30 }]);
+  // A source that is fetched, not read by Claude, is not one of them.
+  const fetched = feeding({ fake: { transport: "api" } }, async () => ({ n: 1 }));
+  assert.deepEqual(JSON.parse((await fetched.app.handle(req("GET", "/api/status"))).body).feeds, []);
+});
+
+test("I can switch a source off for Refresh now from the page, and back on", async () => {
+  const f = feeding({ claudeReads: { onRefresh: true, throttleMinutes: 0 } }, async () => ({ n: 1 }));
+  const off = await f.app.handle(req("POST", "/api/reads", { body: '{"source":"fake","on":false}' }));
+  assert.equal(off.status, 200);
+  assert.equal(JSON.parse(off.body).feeds[0].onRefresh, false);
+  await f.app.handle(req("POST", "/api/tick"));
+  await settle();
+  assert.equal(f.asked(), 0);
+
+  await f.app.handle(req("POST", "/api/reads", { body: '{"source":"fake","on":true}' }));
+  await f.app.handle(req("POST", "/api/tick"));
+  await settle();
+  assert.equal(f.asked(), 1);
+
+  assert.equal((await f.app.handle(req("POST", "/api/reads", { body: '{"source":"fake","on":"yes"}' }))).status, 400);
+  assert.equal((await f.app.handle(req("POST", "/api/reads", { body: '{"source":"nope","on":true}' }))).status, 400);
+  assert.equal((await f.app.handle(req("GET", "/api/reads"))).status, 405);
 });
 
 // ---- Fixing a PR ----

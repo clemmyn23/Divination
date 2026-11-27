@@ -1,7 +1,9 @@
 import { startOfDay } from "../../core/time.ts";
 import type { Panel, View } from "../../core/types.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
+import { fold } from "../../render/fold.ts";
 import { esc, link } from "../../render/html.ts";
+import { emojify } from "./emoji.ts";
 import { appLink } from "./normalise.ts";
 import type { AlertCount, SlackConversation, SlackData, SlackThread } from "./types.ts";
 
@@ -31,7 +33,7 @@ function threadItem(thread: SlackThread, conversation: SlackConversation, view: 
   const authors = conversation.kind === "dm" ? [] : [esc(thread.authors.join(", "))];
   const meta = [esc(where(conversation)), ...authors, String(thread.messageCount), ...(thread.needsYou ? [esc(thread.needsYou)] : [])];
   const key = threadDoneKey(thread);
-  return `<li class="item thread${thread.needsYou ? " needs-you" : ""}">${link(title, appLink(thread.url, view.config.slack.teamId))}
+  return `<li class="item thread${thread.needsYou ? " needs-you" : ""}">${link(emojify(title), appLink(thread.url, view.config.slack.teamId))}
 <p class="meta">${meta.join(" · ")}</p>${tick(key, isDone(key, view))}</li>`;
 }
 
@@ -59,10 +61,7 @@ function slackPanel(data: SlackData, view: View): string {
       .filter((t) => byId.get(t.channelId)!.group === group)
       .sort((a, b) => Number(b.needsYou !== undefined) - Number(a.needsYou !== undefined) || tsMs(b.latestTs) - tsMs(a.latestTs) || b.latestTs.localeCompare(a.latestTs));
     if (threads.length === 0) continue;
-    parts.push(`<h3 class="group">${esc(group)}</h3>
-<ul class="items">
-${threads.map((t) => threadItem(t, byId.get(t.channelId)!, view)).join("\n")}
-</ul>`);
+    parts.push(fold(group, esc(group), `<ul class="items">\n${threads.map((t) => threadItem(t, byId.get(t.channelId)!, view)).join("\n")}\n</ul>`));
   }
   if (done.length > 0) {
     done.sort((a, b) => tsMs(b.latestTs) - tsMs(a.latestTs));

@@ -74,12 +74,21 @@ test("each PR is a title and one meta line", () => {
   assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/1" target="_blank" rel="noopener noreferrer">Change 1</a>'));
   assert.ok(
     html.includes(
-      '<p class="meta">o/r#1 · <strong class="who">ann</strong> · +1,200 −34 · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · touches billing</p>',
+      '<p class="meta">o/r#1 · <strong class="who">ann</strong> · <span class="adds">+1,200</span> <span class="dels">−34</span> · <span class="ci-pass">CI ✓</span> · <span class="tag">rotation</span> · touches billing</p>',
     ),
     html,
   );
   assert.ok(html.includes('<span class="ci-fail">CI ✗</span>'));
   assert.equal((html.match(/<p class="meta">/g) ?? []).length, 4);
+});
+
+test("each group of the queue is a section I can fold shut: open to start, its heading the handle", () => {
+  const html = githubPanels(DATA, view)[0]!.html;
+  assert.deepEqual(html.match(/<details class="fold" data-fold="[a-z-]+" open>\n<summary><h3 class="group">.*<\/h3><\/summary>/g), [
+    '<details class="fold" data-fold="needs-you" open>\n<summary><h3 class="group">Needs you · 2</h3></summary>',
+    '<details class="fold" data-fold="waiting" open>\n<summary><h3 class="group">Waiting on authors · 1</h3></summary>',
+    '<details class="fold" data-fold="covered" open>\n<summary><h3 class="group">Covered or low priority · 1</h3></summary>',
+  ]);
 });
 
 test("group headings carry counts, and an empty group is left out", () => {
@@ -242,7 +251,7 @@ test("numbers and CI words that came from a hand-dropped file cannot carry marku
   const hostile = { ...pr(1, "review_now"), additions: "<img src=x onerror=alert(1)>", deletions: '"><script>x</script>', ci: 'pass"><b>x</b>' } as unknown as PullRequest;
   const html = githubPanels({ login: "me", prs: [hostile] }, view)[0]!.html;
   assert.ok(!html.includes("<img") && !html.includes("<script>") && !html.includes("<b>x</b>"));
-  assert.ok(html.includes("+0 −0"));
+  assert.ok(html.includes('<span class="adds">+0</span> <span class="dels">−0</span>'));
   assert.ok(html.includes('<span class="ci-none">no CI</span>'));
 });
 
@@ -340,6 +349,13 @@ test("beside the Post button is a box for my own message, and Post starts switch
   assert.ok(html.includes('<button type="button" data-review-post disabled>Post</button>'));
   assert.ok(html.includes('<button type="button" data-review-close>Close</button>'));
   assert.ok(html.includes('<p class="review-status" role="status"></p>'));
+});
+
+test("a review posted on an earlier day says which day, so it does not read as today's", () => {
+  const html = drafted(DRAFT, { [postedKey("o/r#1@aaa111")]: NOW - 86_400_000 });
+  const day = "(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \\d{1,2} [A-Z][a-z]{2}";
+  assert.match(html, new RegExp(`<p class="fix-note">Posted ${day} \\d\\d:\\d\\d</p>`));
+  assert.match(html, new RegExp(`<p class="review-status" role="status">Posted ${day} \\d\\d:\\d\\d</p>`));
 });
 
 test("a note's text cannot close its box or carry markup into the page", () => {

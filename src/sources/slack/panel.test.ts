@@ -83,6 +83,18 @@ test("each thread is a linked title and one meta line that starts with where it 
   assert.ok(html.includes('<p class="meta">#team-dev · Rio · 1</p>'));
 });
 
+test("each group is a section I can fold shut: open to start, named after the group", () => {
+  const html = slackHtml();
+  assert.deepEqual(html.match(/<details class="fold" data-fold="[^"]+" open>\n<summary><h3 class="group">.*<\/h3><\/summary>/g), [
+    '<details class="fold" data-fold="Team" open>\n<summary><h3 class="group">Team</h3></summary>',
+    '<details class="fold" data-fold="Posted in" open>\n<summary><h3 class="group">Posted in</h3></summary>',
+  ]);
+  // A group's name comes from my config, and is escaped wherever it lands.
+  const odd = { ...DATA, conversations: DATA.conversations.map((c) => (c.group === "Team" ? { ...c, group: 'A "b" <c>' } : c)) };
+  const oddHtml = slackPanels(odd, view).find((p) => p.id === "slack")!.html;
+  assert.ok(oddHtml.includes('<details class="fold" data-fold="A &quot;b&quot; &lt;c&gt;" open>\n<summary><h3 class="group">A &quot;b&quot; &lt;c&gt;</h3></summary>'));
+});
+
 test("groups come in config order with Posted in last, needs-you first then newest, and empty groups are left out", () => {
   const html = slackHtml();
   const order = ["Team</h3>", "Ten minutes?", "Sam, can you confirm?", "Staging is back.", "Is the &lt;build&gt; broken?", "Posted in</h3>", "One message per release now."];
@@ -123,6 +135,20 @@ test("when every thread is ticked off the panel says so, above the folded ones",
   assert.ok(!slackPanels(one, view).find((p) => p.id === "slack")!.html.includes('class="quiet"'));
   const two: SlackData = { ...DATA, threads: [...one.threads, thread("C1", "400.000100", { latestTs: today(120) })] };
   assert.ok(!slackPanels(two, done).find((p) => p.id === "slack")!.html.includes('class="quiet"'));
+});
+
+test("a thread's title shows emoji, not their names between colons", () => {
+  const one: SlackData = {
+    ...DATA,
+    threads: [
+      thread("C1", "300.000100", { latestTs: today(60), excerpt: ":loudspeaker: Release at 3 :partyparrot:" }),
+      thread("C1", "400.000100", { latestTs: today(50), summary: "Agreed on Tuesday :+1:", excerpt: "long thread" }),
+    ],
+  };
+  const html = slackPanels(one, view).find((p) => p.id === "slack")!.html;
+  assert.ok(html.includes(">📢 Release at 3</a>"));
+  assert.ok(html.includes(">Agreed on Tuesday 👍</a>"));
+  assert.ok(!html.includes(":loudspeaker:") && !html.includes(":partyparrot:"));
 });
 
 test("alerts panel shows counts and quiet channels", () => {

@@ -146,6 +146,16 @@ function problemsIn(config: Config): string[] {
   if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
     problems.push(`claudeReads.timeoutMinutes must be a number of minutes above 0 (got ${shown(timeout)})`);
   }
+  const every: unknown = reads.everyMinutes;
+  if (typeof every !== "object" || every === null || Array.isArray(every)) {
+    problems.push(`claudeReads.everyMinutes must be a list of sources and minutes, such as "slack: 30" (got ${shown(every)})`);
+  } else {
+    for (const [id, minutes] of Object.entries(every)) {
+      if (typeof minutes !== "number" || !Number.isFinite(minutes) || minutes < 0) {
+        problems.push(`claudeReads.everyMinutes.${id} must be a number of minutes, 0 or more (got ${shown(minutes)})`);
+      }
+    }
+  }
   for (const [name, run] of [["slack.sweep", config.slack?.sweep], ["calendar.read", config.calendar?.read]] as const) {
     const tools: unknown = run?.tools;
     if (!Array.isArray(tools) || !tools.every((tool) => typeof tool === "string")) {

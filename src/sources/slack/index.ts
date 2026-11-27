@@ -1,3 +1,4 @@
+import { claudeReadsUnasked } from "../../core/pipeline.ts";
 import { readDropped } from "../../core/store.ts";
 import type { Check, Context, Source } from "../../core/types.ts";
 import { claudeCheck } from "../../enrich/claude.ts";
@@ -41,7 +42,7 @@ function inboxCheck(ctx: Context): Check {
 
 async function doctor(ctx: Context): Promise<Check[]> {
   if (ctx.config.slack.transport === "inbox") {
-    return [inboxCheck(ctx), ...(ctx.config.claudeReads.onRefresh ? [await claudeCheck(ctx)] : [])];
+    return [inboxCheck(ctx), ...(claudeReadsUnasked(ctx.config, "slack") ? [await claudeCheck(ctx)] : [])];
   }
   if (!(await ctx.secrets.get("slack"))) {
     return [{ name: "token", ok: false, detail: "no Slack token is stored", fix: SET_IT }];

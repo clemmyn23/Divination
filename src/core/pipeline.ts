@@ -35,6 +35,23 @@ export function transportOf(config: Config, id: string): string | undefined {
   return block?.transport;
 }
 
+/** True for a source Claude can read: one fed through its inbox that knows how to ask. */
+export function isClaudeFed(config: Config, source: Source<any>): boolean {
+  return source.feed !== undefined && transportOf(config, source.id) === "inbox";
+}
+
+/** How often the live timer has Claude read this source, in minutes. 0 is never. */
+export function timerMinutes(config: Config, id: string): number {
+  const every = config.claudeReads.everyMinutes;
+  const minutes = Object.hasOwn(every, id) ? every[id] : 0;
+  return typeof minutes === "number" && minutes > 0 ? minutes : 0;
+}
+
+/** True when Claude may be asked to read this source without its own button: by Refresh now, or on the timer. */
+export function claudeReadsUnasked(config: Config, id: string): boolean {
+  return config.claudeReads.onRefresh || timerMinutes(config, id) > 0;
+}
+
 /** The source's data and when it was gathered. Inbox data is as old as the file it came from. */
 async function gather(source: Source<any>, ctx: Context): Promise<{ data: unknown; at: number }> {
   if (transportOf(ctx.config, source.id) !== "inbox") return { data: await source.collect(ctx), at: ctx.now() };

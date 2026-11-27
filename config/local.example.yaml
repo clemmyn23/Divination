@@ -12,6 +12,11 @@ sources: [calendar, github, slack]
 claudeReads:
   onRefresh: true
   throttleMinutes: 2
+  # While the page is live, also have Claude sweep Slack every 30 minutes and read the
+  # calendar every hour. Each read is a Claude run. Delete this to read only when asked.
+  everyMinutes:
+    slack: 30
+    calendar: 60
 
 github:
   host: github.example.com

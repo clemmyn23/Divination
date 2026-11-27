@@ -30,6 +30,8 @@ class FakeElement {
     if (selector === "button[data-enrich]" && "enrich" in this.dataset) return this;
     if (selector === "button[data-done]" && "done" in this.dataset) return this;
     if (selector === "button[data-fix]" && "fix" in this.dataset) return this;
+    if (selector === "button[data-feed]" && "feed" in this.dataset) return this;
+    if (selector === "input[data-reads]" && "reads" in this.dataset) return this;
     if (selector === ".panel" && this.panelId) return { id: this.panelId } as unknown as FakeElement;
     return null;
   }
@@ -142,6 +144,7 @@ interface Status {
   renderedAt: number;
   startedAt: number;
   sources?: { id: string; title: string; state: string; at: number; ms?: number; error?: string; byHand?: boolean; asking?: boolean }[];
+  feeds?: { id: string; title: string; onRefresh: boolean; everyMinutes: number }[];
   job: { name: string; startedAt: number } | null;
   lastJob: { name: string; ok: boolean; error?: string; finishedAt: number } | null;
   fix?: { key: string; index: number; total: number; stopping: boolean } | null;
@@ -176,7 +179,15 @@ function page(stored: string | null, opts: Options = {}) {
     "activity-lines": new FakeElement("activity-lines", ""),
     "activity-live": new FakeElement("activity-live", ""),
     "activity-close": new FakeElement("activity-close", "Close"),
+    "refresh-options": new FakeElement("refresh-options", ""),
+    "refresh-options-open": new FakeElement("refresh-options-open", "⚙"),
+    "refresh-options-close": new FakeElement("refresh-options-close", "Close"),
   };
+  // The refresh options: one source Claude reads, with its switch and its Read now button.
+  const reads = new FakeElement("reads-fake");
+  reads.dataset.reads = "fake";
+  const readNow = new FakeElement("feed-fake", "Read now");
+  readNow.dataset.feed = "fake";
   const dialog = elements["activity-log"]! as FakeElement & { showModal(): void; close(): void };
   dialog.showModal = () => {
     dialog.open = true;
@@ -221,6 +232,8 @@ function page(stored: string | null, opts: Options = {}) {
     activity: [] as { at: number; level: string; text: string }[],
     status: opts.status === undefined ? LIVE : opts.status,
     postStatus: 200,
+    /** What the server answers when a refresh option is switched. */
+    readsStatus: 200,
     /** What the server answers a posted review with. */
     review: { status: 200, body: { comments: 2, inBody: 1 } as object, hold: null as Promise<void> | null },
     requests: [] as { url: string; method: string; headers: Record<string, string>; body: unknown }[],
@@ -257,6 +270,11 @@ function page(stored: string | null, opts: Options = {}) {
         const { status, body } = server.review;
         if (status === 200) server.status = { ...server.status, renderedAt: server.status.renderedAt + 1 }; // the server redraws the page
         return { ok: status === 200, status, json: async () => body };
+      }
+      if (method === "POST" && url === "/api/reads") {
+        if (server.readsStatus !== 200) return { ok: false, status: server.readsStatus, json: async () => ({ error: "no" }) };
+        const { source: id, on } = JSON.parse(init.body!) as { source: string; on: boolean };
+        server.status = { ...server.status, feeds: (server.status.feeds ?? []).map((f) => (f.id === id ? { ...f, onRefresh: on } : f)) };
       }
       if (method === "POST") {
         if (server.postStatus === 409) return { ok: false, status: 409, json: async () => ({ error: "busy" }) };
@@ -295,6 +313,8 @@ function page(stored: string | null, opts: Options = {}) {
         if (selector === "button[data-enrich]") return [draft];
         if (selector === "button[data-done]") return [tick];
         if (selector === "button[data-fix]") return [fixAll, fix];
+        if (selector === "button[data-feed]") return [readNow];
+        if (selector === "input[data-reads]") return [reads];
         if (selector === ".panel-body") return [body];
         if (selector === "details.stale") return [fold];
         if (selector === "details.fold") return [section];
@@ -319,6 +339,16 @@ function page(stored: string | null, opts: Options = {}) {
     body,
     fold,
     section,
+    reads,
+    readNow,
+    options: elements["refresh-options"]!,
+    optionsOpen: elements["refresh-options-open"]!,
+    optionsClose: elements["refresh-options-close"]!,
+    /** A switch was flipped, as the browser reports it. */
+    async changed(target: FakeElement) {
+      for (const fn of listeners.change ?? []) await fn({ target });
+      await settle();
+    },
     /** A section was folded shut or opened, as the browser reports it. */
     async toggled(target: FakeElement) {
       for (const fn of listeners.toggle ?? []) await fn({ target });
@@ -708,6 +738,88 @@ test("a fold that is not a section is not remembered this way, and blocked or ju
   blocked.section.open = false;
   await blocked.toggled(blocked.section);
   assert.equal(blocked.liveToggle.textContent, "Pause");
+});
+
+// Refresh options: what Refresh now has Claude read, and reading one source now
+
+const FEEDS = [{ id: "fake", title: "Fake", onRefresh: true, everyMinutes: 30 }];
+
+test("the cog opens the refresh options and Close closes them, with or without the server", async () => {
+  for (const status of [LIVE, null]) {
+    const p = page(null, { status });
+    await p.finishParsing();
+    await p.click(p.optionsOpen);
+    assert.equal(p.options.open, true);
+    await p.click(p.optionsClose);
+    assert.equal(p.options.open, false);
+  }
+});
+
+test("each switch shows what the server says Refresh now reads", async () => {
+  const on = page(null, { status: { ...LIVE, feeds: FEEDS } });
+  await on.finishParsing();
+  assert.deepEqual([on.reads.checked, on.reads.disabled], [true, false]);
+
+  const off = page(null, { status: { ...LIVE, feeds: [{ ...FEEDS[0]!, onRefresh: false }] } });
+  await off.finishParsing();
+  assert.equal(off.reads.checked, false);
+});
+
+test("flipping a switch tells the server, and a switch the server refuses flips back", async () => {
+  const p = page(null, { status: { ...LIVE, feeds: FEEDS } });
+  await p.finishParsing();
+
+  p.reads.checked = false; // as a click on it does
+  await p.changed(p.reads);
+  assert.deepEqual(p.posts().at(-1), { url: "/api/reads", method: "POST", headers: { "content-type": "application/json", "x-divination-token": "tok" }, body: { source: "fake", on: false } });
+  assert.equal(p.reads.checked, false);
+  await p.poll();
+  assert.equal(p.reads.checked, false); // the server remembers
+
+  p.server.readsStatus = 400;
+  p.reads.checked = true;
+  await p.changed(p.reads);
+  assert.equal(p.reads.checked, false);
+});
+
+test("Read now asks the server to have Claude read that one source", async () => {
+  const p = page(null, { status: { ...LIVE, feeds: FEEDS } });
+  await p.finishParsing();
+  await p.click(p.readNow);
+  const sent = p.posts().at(-1)!;
+  assert.deepEqual([sent.url, sent.body], ["/api/feed", { source: "fake" }]);
+});
+
+test("while something runs Read now waits, and with the server down so do the switches", async () => {
+  const busy = page(null, { status: { ...LIVE, feeds: FEEDS, job: { name: "tick", startedAt: 1 } } });
+  await busy.finishParsing();
+  assert.deepEqual([busy.readNow.disabled, busy.reads.disabled], [true, false]);
+
+  const down = page(null, { status: null });
+  await down.finishParsing();
+  assert.deepEqual([down.readNow.disabled, down.reads.disabled], [true, true]);
+  await down.click(down.readNow);
+  down.reads.checked = true;
+  await down.changed(down.reads);
+  assert.equal(down.posts().length, 0);
+});
+
+test("open refresh options are open again after the page reloads itself", async () => {
+  const p = page(null, { status: { ...LIVE, feeds: FEEDS } });
+  await p.finishParsing();
+  await p.click(p.optionsOpen);
+  await p.click(p.tick); // the server redraws the page, which reloads this one
+  assert.equal(JSON.parse(p.session.get("divination-view")!).options, true);
+
+  const next = page(null, { session: p.session.get("divination-view")!, status: { ...LIVE, feeds: FEEDS } });
+  await next.finishParsing();
+  assert.equal(next.options.open, true);
+
+  // Shut, it stays shut.
+  const shut = page(null);
+  await shut.finishParsing();
+  await shut.click(shut.tick);
+  assert.equal(JSON.parse(shut.session.get("divination-view")!).options, undefined);
 });
 
 // Activity: the breakdown on hover and the log behind a click
