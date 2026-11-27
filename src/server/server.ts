@@ -13,7 +13,7 @@ import { type FixProgress, fixJob } from "../sources/github/fix/job.ts";
 import { type fixOne, workRoot } from "../sources/github/fix/run.ts";
 import { Refusal, parsePost, postReview } from "../sources/github/review/post.ts";
 import { type ActivityUpdate, createActivity } from "./activity.ts";
-import { createFeeder } from "./feed.ts";
+import { claudeFed, createFeeder, everyMinutes, readsOnRefresh, setReadsOnRefresh } from "./feed.ts";
 import { createJobs } from "./jobs.ts";
 import { type Timers, createLive } from "./live.ts";
 
@@ -77,6 +77,8 @@ const ROUTES: Record<string, "GET" | "POST"> = {
   "/api/activity/stream": "GET",
   "/api/live": "POST",
   "/api/tick": "POST",
+  "/api/feed": "POST",
+  "/api/reads": "POST",
   "/api/enrich": "POST",
   "/api/done": "POST",
   "/api/fix": "POST",
@@ -88,8 +90,10 @@ const ROUTES: Record<string, "GET" | "POST"> = {
  * The local page server, as a function from request to response.
  *
  * It serves the page, owns the live-update timer, and is the only way a button press
- * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now through `feed`, a
- * Fix button through `fixJob`. Two buttons change something outside this machine, and
+ * reaches an LLM: a sparkle button through `enrichOnDemand`, Refresh now and a source's
+ * Read now through `feed`, a Fix button through `fixJob`. The timer reaches one too, but
+ * only through `feed` and only for a source given an interval in
+ * `claudeReads.everyMinutes`. Two buttons change something outside this machine, and
  * nothing else here does: a Fix button pushes a commit to one of my own PRs, and the Post
  * button in a drafted review's dialog posts that review to its PR. It answers only
  * requests addressed to its own loopback address, and only acts on a POST that carries the
@@ -139,19 +143,35 @@ export function createApp(
   const port = ctx.config.server.port;
   const ownHosts = [`127.0.0.1:${port}`, `localhost:${port}`];
 
+  // The timer: the plain refresh, then Claude reads any source whose interval in
+  // `claudeReads.everyMinutes` has come round. Outside working hours neither happens.
   const live = createLive(
     ctx,
     () => {
-      jobs.run("tick", () => tick(ctx, sources));
+      jobs.run("tick", async () => {
+        if ((await tick(ctx, sources)) !== "ran") return;
+        const failures = await feed(ctx, sources, { on: "timer" });
+        if (failures.length > 0) throw new Error(failures.join("; "));
+      });
     },
     timers,
   );
+
+  // The sources Claude can read, and what Refresh now and the timer do for each.
+  const feeds = () =>
+    claudeFed(ctx, sources).map((source) => ({
+      id: source.id,
+      title: source.title,
+      onRefresh: readsOnRefresh(ctx, source.id),
+      everyMinutes: everyMinutes(ctx, source.id),
+    }));
 
   const status = () => ({
     ...live.state(),
     renderedAt: existsSync(ctx.paths.site) ? statSync(ctx.paths.site).mtimeMs : 0,
     startedAt,
     sources: activity.sources(),
+    feeds: feeds(),
     job: jobs.current(),
     lastJob: jobs.last(),
     fix: fixing ? { ...fixing, stopping } : null,
@@ -229,8 +249,8 @@ export function createApp(
         return json(200, status());
       }
 
-      // Refresh now: the plain refresh first, then (only here, never on the timer, and only
-      // with `claudeReads.onRefresh`) Claude reads the sources that are otherwise fed by hand.
+      // Refresh now: the plain refresh first, then Claude reads the sources switched on
+      // for it (`claudeReads.onRefresh`, or my own choice for a source on the page).
       case "/api/tick": {
         const started = jobs.run("tick", async () => {
           await tick(ctx, sources, { force: true });
@@ -238,6 +258,28 @@ export function createApp(
           if (failures.length > 0) throw new Error(failures.join("; "));
         });
         return started ? json(202, status()) : refuse(409, "busy");
+      }
+
+      // A source's own Read now button: Claude reads that one source at once.
+      case "/api/feed": {
+        const id = fields.source;
+        const source = typeof id === "string" ? claudeFed(ctx, sources).find((s) => s.id === id) : undefined;
+        if (!source) return refuse(400, '"source" must be a source that Claude reads');
+        const started = jobs.run(`feed:${source.id}`, async () => {
+          const failures = await feed(ctx, sources, { on: "force", source: source.id });
+          if (failures.length > 0) throw new Error(failures.join("; "));
+        });
+        return started ? json(202, status()) : refuse(409, "busy");
+      }
+
+      // The refresh options: whether Refresh now has Claude read a source.
+      case "/api/reads": {
+        const { source: id, on } = fields;
+        const known = typeof id === "string" && claudeFed(ctx, sources).some((s) => s.id === id);
+        if (!known || typeof on !== "boolean") return refuse(400, '"source" must be a source that Claude reads and "on" true or false');
+        setReadsOnRefresh(ctx, id as string, on);
+        ctx.log("reads", { source: id, on });
+        return json(200, status());
       }
 
       case "/api/done": {

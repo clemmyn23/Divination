@@ -31,11 +31,14 @@ export interface Config {
   hideOlderThanDays: number;
   enrich: { maxBudgetUsd: number };
   /**
-   * Refresh now can have Claude do the reads that are otherwise started by hand, for
-   * sources on the inbox transport. `throttleMinutes` is how soon after a source's last
-   * such read another may start; it limits only these Claude calls, never a plain refresh.
+   * Claude can do the reads that are otherwise started by hand, for sources on the inbox
+   * transport. `onRefresh` is whether Refresh now starts them, unless I chose otherwise
+   * for a source on the page. `throttleMinutes` is how soon after a source's last such
+   * read Refresh now may start another; it limits only these Claude calls, never a plain
+   * refresh. `everyMinutes` names the sources the live timer also reads, by source id,
+   * and how often; a source that is not named, or is given 0, is never read on the timer.
    */
-  claudeReads: { onRefresh: boolean; throttleMinutes: number; timeoutMinutes: number };
+  claudeReads: { onRefresh: boolean; throttleMinutes: number; timeoutMinutes: number; everyMinutes: Record<string, number> };
   server: { port: number };
   github: {
     transport: Transport;
@@ -235,8 +238,10 @@ export interface Source<TData> {
    */
   fromInbox?(dropped: unknown, ctx: Context): TData;
   /**
-   * Have Claude gather what `fromInbox` takes, through a connector. This is an LLM call:
-   * it is only ever made when Refresh now is pressed, and only with `claudeReads.onRefresh`.
+   * Have Claude gather what `fromInbox` takes, through a connector. This is an LLM call.
+   * It is made when Refresh now is pressed, for a source switched on for that; when the
+   * source's own Read now button is pressed; and on the live timer, for a source given
+   * an interval in `claudeReads.everyMinutes`. Never otherwise.
    */
   feed?(ctx: Context): Promise<unknown>;
   /** Problems with the data; empty means valid. */

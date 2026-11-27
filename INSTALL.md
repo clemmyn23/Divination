@@ -142,7 +142,9 @@ To have **Refresh now** run the Slack sweep and the calendar read for you, inste
 starting them by hand, also set `claudeReads.onRefresh: true`. It applies to sources whose
 `transport` is `inbox`, and `claude` must be able to reach the Slack and Google Calendar
 connectors. The tools each read may use are listed under `slack.sweep.tools` and
-`calendar.read.tools`; keep them to read-only ones. The README's
+`calendar.read.tools`; keep them to read-only ones. To have the live timer run them as
+well, name each source and its interval in minutes under `claudeReads.everyMinutes`
+(`slack: 30`, `calendar: 60`). The README's
 [When Claude is called](README.md#when-claude-is-called) says what this costs and how it
 is limited.
 

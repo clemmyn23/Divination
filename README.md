@@ -71,6 +71,9 @@ All are run as `pnpm divination <command>`.
 - **Refresh now** collects and redraws straight away. If you turn on
   `claudeReads.onRefresh`, it then has Claude read the calendar and sweep Slack (see
   below), redrawing as each one lands.
+- **The cog** beside Refresh now opens the refresh options: for each source Claude reads,
+  a switch for whether Refresh now reads it, what the timer does with it, and a
+  **Read now** button.
 - **The status** beside those buttons says when the next update is. Hover it for each
   source's state; click it for the activity log. The log is live while it is open: each
   step of a refresh appears as it happens, and during a Claude call so do the words Claude
@@ -166,7 +169,8 @@ the page does not reload itself while a review is open. Claude is not involved i
 
 ## When Claude is called
 
-Collecting and drawing never call an LLM. Claude is called only when you ask:
+Collecting and drawing never call an LLM. Claude is called when you ask, and on the timer
+only for a source you have put there:
 
 - a button with a sparkle on the page (**Draft review**, **Rerun review**, **Summarise
   threads**), or the `enrich` command typed by hand. **Rerun review** drafts a review
@@ -174,9 +178,19 @@ Collecting and drawing never call an LLM. Claude is called only when you ask:
   old draft stays;
 - `/calendar-read` and `/slack-sweep`, which you start yourself in a Claude session
   ([INSTALL.md](INSTALL.md#4-give-each-source-access) says when you need them);
-- **Refresh now**, but only with `claudeReads.onRefresh: true`, and only for sources whose
-  `transport` is `inbox`. After its usual refresh it runs the same two reads headless, on
-  Haiku, with nothing but the connector's read-only tools. The timer never does this.
+- **Refresh now**, for sources whose `transport` is `inbox`. After its usual refresh it
+  runs the same two reads headless, on Haiku, with nothing but the connector's read-only
+  tools. `claudeReads.onRefresh: true` switches this on for every such source; the cog
+  beside Refresh now opens the **refresh options**, where you switch each source on or
+  off yourself. Your choice there wins over the setting and is remembered.
+- **Read now**, the sparkle button beside each source in the refresh options. It has
+  Claude read that one source at once, whatever else is set.
+- **The live timer**, but only for a source named in `claudeReads.everyMinutes`, and only
+  in working hours while the page is live. `slack: 30` sweeps Slack every 30 minutes;
+  `calendar: 60` reads the calendar every hour. Nothing is named by default. The interval
+  is counted from the source's last read, whoever started it, and is rounded to the
+  timer's ticks. Each read is a Claude run under the same spending cap, so a source on
+  the timer costs a little for every interval the page is live.
 - **Fix** and **Fix all**, also with a sparkle, or the `fix` command typed by hand. A fix
   has its own spending cap and time limit (`github.fix.maxBudgetUsd`, $3, and
   `github.fix.timeoutMinutes`, 20). The most one press of Fix all can cost is the number
@@ -186,7 +200,7 @@ Collecting and drawing never call an LLM. Claude is called only when you ask:
 Refresh now's Claude reads are throttled: once Claude has read a source (or failed to),
 pressing again within `claudeReads.throttleMinutes` (2 by default) refreshes as usual but
 does not ask Claude again, and the log says how long is left. The throttle only ever holds
-back those Claude calls.
+back those Claude calls, and Read now is not held back by it.
 
 Each call runs the `claude` command-line tool headless, with a spending cap
 (`enrich.maxBudgetUsd`, which applies to a Refresh now read too), no session kept, and

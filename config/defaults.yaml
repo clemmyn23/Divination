@@ -36,6 +36,10 @@ claudeReads:
   throttleMinutes: 2
   # How long one read may run before it is stopped.
   timeoutMinutes: 10
+  # Sources Claude also reads on the live timer, and how often in minutes, for example
+  # `slack: 30`. A source that is not named here is never read on the timer. Each read is
+  # a Claude run, so this costs money for as long as the page is live.
+  everyMinutes: {}
 
 server:
   port: 4815

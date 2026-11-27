@@ -44,6 +44,10 @@
   const enrichButtons = () => document.querySelectorAll("button[data-enrich]");
   const fixButtons = () => document.querySelectorAll("button[data-fix]");
   const ticks = () => document.querySelectorAll("button[data-done]");
+  // The refresh options: a switch and a Read now button for each source Claude reads.
+  const readSwitches = () => document.querySelectorAll("input[data-reads]");
+  const readNowButtons = () => document.querySelectorAll("button[data-feed]");
+  const optionsAreOpen = () => Boolean(document.getElementById("refresh-options")?.open);
 
   // ---- Keeping my place across a reload: each panel's scroll position and its open folds ----
 
@@ -62,7 +66,8 @@
         const id = panelOf(fold);
         if (id && fold.open) open.push(`${id}:${fold.className}`);
       }
-      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ scroll, open, ...(logIsOpen() ? { log: true } : {}) }));
+      const dialogs = { ...(logIsOpen() ? { log: true } : {}), ...(optionsAreOpen() ? { options: true } : {}) };
+      sessionStorage.setItem(VIEW_KEY, JSON.stringify({ scroll, open, ...dialogs }));
     } catch {
       // Storage can be blocked; the page then reloads from the top.
     }
@@ -81,6 +86,7 @@
         if (typeof top === "number") body.scrollTop = top;
       }
       if (saved.log) openLog(); // it was open when the page reloaded itself
+      if (saved.options) document.getElementById("refresh-options")?.showModal(); // and so were these
     } catch {
       // Nothing usable was remembered.
     }
@@ -499,6 +505,13 @@
       if (!pending || button !== pending.button) button.disabled = busy;
     }
     for (const button of ticks()) button.disabled = false;
+    // The refresh options: each switch is what the server holds, and Read now waits its turn.
+    const reads = new Map((status.feeds ?? []).map((feed) => [feed.id, feed.onRefresh === true]));
+    for (const box of readSwitches()) {
+      box.disabled = false;
+      if (reads.has(box.dataset.reads)) box.checked = reads.get(box.dataset.reads);
+    }
+    for (const button of readNowButtons()) button.disabled = busy;
 
     // While a Fix all runs, its own button stops it after the PR in hand; every other Fix button waits.
     fixingAll = busy && status.job.name === "fix:all";
@@ -543,6 +556,8 @@
     for (const button of enrichButtons()) button.disabled = true;
     for (const button of fixButtons()) button.disabled = true;
     for (const button of ticks()) button.disabled = true;
+    for (const box of readSwitches()) box.disabled = true;
+    for (const button of readNowButtons()) button.disabled = true;
     refreshReviews();
     setStatus("server not running");
   }
@@ -603,6 +618,15 @@
   document.addEventListener("input", reviewChanged);
   document.addEventListener("change", reviewChanged);
 
+  // A switch in the refresh options was flipped: the server keeps the choice. One it will
+  // not take, or cannot be told of, goes back to where it was.
+  document.addEventListener("change", async (event) => {
+    const box = event.target instanceof Element ? event.target.closest("input[data-reads]") : null;
+    if (!box) return;
+    const on = box.checked === true;
+    if (!online || !(await act("/api/reads", { source: box.dataset.reads, on }))) box.checked = !on;
+  });
+
   document.addEventListener("click", async (event) => {
     const target = event.target instanceof Element ? event.target : null;
     if (!target) return;
@@ -657,7 +681,24 @@
       return;
     }
 
+    // The refresh options open and close with or without the server.
+    if (target.closest("#refresh-options-open")) {
+      el("refresh-options")?.showModal();
+      return;
+    }
+    if (target.closest("#refresh-options-close")) {
+      el("refresh-options")?.close();
+      return;
+    }
+
     if (!online) return; // everything below needs the server
+
+    // Read now: the server has Claude read this one source at once.
+    const readNow = target.closest("button[data-feed]");
+    if (readNow) {
+      await act("/api/feed", { source: readNow.dataset.feed });
+      return;
+    }
 
     const liveToggle = target.closest("#live-toggle");
     if (liveToggle) {
