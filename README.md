@@ -3,6 +3,13 @@
 A small dashboard for the work day, served from your own laptop. One page, no scrolling,
 with a crystal ball that worries on your behalf.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/dashboard-dark.png">
+  <img src="docs/dashboard.png" alt="The Divination dashboard: a top bar counting what needs you, then panels for Needs you, Today, Review queue, My PRs, Slack and Alerts">
+</picture>
+
+*The sample page, drawn from invented data by `pnpm divination render --fixtures`.*
+
 It shows:
 
 - **Needs you**: everything waiting on you, from every source, counted in the top bar.

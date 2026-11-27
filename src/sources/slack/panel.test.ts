@@ -27,9 +27,9 @@ const DATA: SlackData = {
   conversations: [
     { id: "C1", name: "team-dev", group: "Team", kind: "channel" },
     { id: "D1", name: "Ana", group: "Team", kind: "dm" },
-    { id: "C3", name: "frontend", group: "Starred", kind: "channel" },
+    { id: "C3", name: "ui-guild", group: "Starred", kind: "channel" },
     { id: "C2", name: "svc-alerts", group: "Alerts", kind: "alerts" },
-    { id: "C4", name: "monthly-monitor", group: "Alerts", kind: "alerts" },
+    { id: "C4", name: "usage-reports", group: "Alerts", kind: "alerts" },
     { id: "C7", name: "deploys", group: "Posted in", kind: "channel" },
   ],
   threads: [
@@ -135,15 +135,15 @@ test("alerts panel shows counts and quiet channels", () => {
       '<li class="alert state-firing"><span class="times">×3</span> <a href="https://w.slack.com/archives/C2/p1" target="_blank" rel="noopener noreferrer">Triggered: 5xx &lt;rate&gt;</a> <span class="state">firing</span><button type="button" class="tick"',
     ),
   );
-  assert.ok(html.includes('<p class="quiet">Quiet today: #monthly-monitor</p>'));
-  assert.ok(!html.includes('<h4 class="conv">#monthly-monitor</h4>'));
+  assert.ok(html.includes('<p class="quiet">Quiet today: #usage-reports</p>'));
+  assert.ok(!html.includes('<h4 class="conv">#usage-reports</h4>'));
 });
 
 test("with no alert channels, or none firing, the alerts panel still says something", () => {
   const noChannels = slackPanels({ ...DATA, conversations: DATA.conversations.filter((c) => c.kind !== "alerts"), alerts: {} }, view).find((p) => p.id === "alerts")!.html;
   assert.equal(noChannels, '<p class="quiet">No alert channels are set up.</p>');
   const allQuiet = slackPanels({ ...DATA, alerts: {} }, view).find((p) => p.id === "alerts")!.html;
-  assert.equal(allQuiet, '<p class="quiet">Quiet today: #svc-alerts, #monthly-monitor</p>');
+  assert.equal(allQuiet, '<p class="quiet">Quiet today: #svc-alerts, #usage-reports</p>');
 });
 
 test("every thread that needs me is an attention item, dated by its latest message", () => {
