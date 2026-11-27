@@ -91,6 +91,48 @@
     location.reload();
   }
 
+  // ---- Sections I folded shut stay shut: across reloads, and from one day to the next ----
+
+  const FOLDS_KEY = "divination-folds";
+  const foldId = (fold) => `${panelOf(fold)}:${fold.dataset.fold}`;
+
+  function shutFolds() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(FOLDS_KEY) ?? "[]");
+      return Array.isArray(saved) ? saved : [];
+    } catch {
+      return []; // storage is blocked or holds junk: every section is open
+    }
+  }
+
+  // The page draws every section open, and the browser reports each of those as a toggle
+  // while it is still reading the page. Those are not mine: nothing is remembered until
+  // the sections I shut have been shut again.
+  let foldsRestored = false;
+
+  function restoreFolds() {
+    const shut = shutFolds();
+    for (const fold of document.querySelectorAll("details.fold")) {
+      if (shut.includes(foldId(fold))) fold.open = false;
+    }
+    foldsRestored = true;
+  }
+
+  // A section was folded or opened. Only this one changes in what is remembered: a section
+  // that is not on the page today keeps the state I left it in.
+  function foldToggled(event) {
+    const fold = event.target instanceof Element ? event.target : null;
+    if (!foldsRestored || !fold || !fold.dataset.fold || !panelOf(fold)) return;
+    const id = foldId(fold);
+    const shut = shutFolds().filter((other) => other !== id);
+    if (!fold.open) shut.push(id);
+    try {
+      localStorage.setItem(FOLDS_KEY, JSON.stringify(shut));
+    } catch {
+      // Storage can be blocked; the section then opens again on the next load.
+    }
+  }
+
   let online = false;
   let seenRenderedAt = null; // the page file's timestamp when this page was loaded
   let seenStartedAt = null; // when the server that this page first heard from started
@@ -546,6 +588,7 @@
 
   document.addEventListener("DOMContentLoaded", () => {
     applyTheme(theme); // labels the button once it exists
+    restoreFolds(); // before the scroll positions: a shut section changes how far its panel scrolls
     restoreView();
     restoreReviews();
     poll();
@@ -556,6 +599,7 @@
     el("activity-log")?.addEventListener?.("close", stopFollowing);
   });
 
+  document.addEventListener("toggle", foldToggled, true); // it does not bubble, so it is caught on the way down
   document.addEventListener("input", reviewChanged);
   document.addEventListener("change", reviewChanged);
 

@@ -61,6 +61,20 @@ test("they are grouped by what each waits on, with counts, and an empty group is
   assert.deepEqual(onlyDraft.match(/<h3 class="group">.*<\/h3>/g), ['<h3 class="group">Drafts · 1</h3>']);
 });
 
+test("each group is a section I can fold shut: open to start, named after what it waits on, its heading the handle", () => {
+  const html = myPrsPanel(DATA, view).html;
+  assert.deepEqual(html.match(/<details class="fold" data-fold="[a-z]+" open>\n<summary><h3 class="group">.*<\/h3><\/summary>/g), [
+    '<details class="fold" data-fold="me" open>\n<summary><h3 class="group">Needs you · 1</h3></summary>',
+    '<details class="fold" data-fold="fix" open>\n<summary><h3 class="group">To fix · 1</h3></summary>',
+    '<details class="fold" data-fold="others" open>\n<summary><h3 class="group">Waiting on others · 2</h3></summary>',
+    '<details class="fold" data-fold="draft" open>\n<summary><h3 class="group">Drafts · 1</h3></summary>',
+  ]);
+  // Each section holds its own PRs and nothing else.
+  const toFix = html.slice(html.indexOf('data-fold="fix"'), html.indexOf('data-fold="others"'));
+  assert.ok(toFix.includes("My change 8") && toFix.trimEnd().endsWith("</ul>\n</details>\n<details class=\"fold\""));
+  assert.ok(!toFix.includes("My change 7") && !toFix.includes("My change 9"));
+});
+
 test("each PR is a title and one meta line: where, size, CI, the review's verdict, and why", () => {
   const html = myPrsPanel(DATA, view).html;
   assert.ok(html.includes('<a href="https://git.example.com/o/r/pull/7" target="_blank" rel="noopener noreferrer">My change 7</a>'));
@@ -211,11 +225,11 @@ test("at the limit the button gives way to words", () => {
 
 test("Fix all appears when two or more open PRs can be fixed, and counts them", () => {
   const two = panelOf([fixable(8), fixable(9)]);
-  assert.ok(two.includes('<h3 class="group">To fix · 2</h3>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>\n<ul class="items">'));
+  assert.ok(two.includes('<h3 class="group">To fix · 2</h3></summary>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>\n<ul class="items">'));
   assert.ok(!panelOf([fixable(8), mine(9, { on: "fix", reasons: ["CI failing"] }, { ci: "fail" })]).includes('data-fix="all"'));
   // With nothing in "To fix", it sits under "Needs you".
   const asked = (n: number) => mine(n, { on: "me", reasons: ["changes requested", "CI failing"] }, { ci: "fail", review: "changes_requested", fix: CAN });
-  assert.ok(panelOf([asked(8), asked(9)]).includes('<h3 class="group">Needs you · 2</h3>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>'));
+  assert.ok(panelOf([asked(8), asked(9)]).includes('<h3 class="group">Needs you · 2</h3></summary>\n<button data-fix="all" title="Fixes 2 PRs, one at a time">Fix all</button>'));
 });
 
 test("Fix all leaves out PRs that are old or ticked off, which keep their own button", () => {

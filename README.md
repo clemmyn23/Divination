@@ -92,6 +92,9 @@ none of those reach Needs you. "Pushed" is read from the time of the PR's newest
 Comments from an app's bot account never count; a review bot that signs in as a person
 does, until you add its username to `github.mine.ignoreCommenters`.
 
+Each of those sections folds shut when you click its heading, and stays shut in that
+browser until you open it again.
+
 The review queue's own rules for a review crew (rotation, crew members, signals from the
 review channel) are in [docs/review-rules.md](docs/review-rules.md). They apply only when
 `github.crew` is filled in.
@@ -136,8 +139,9 @@ anything but TeamCity, or re-run a build. The same thing from a terminal is
 A drafted review sits folded under its PR in the Review queue. **Open review** opens it in
 a dialog:
 
-- Each note has a checkbox and its text, which you can edit. Nothing is ticked to start:
-  tick the notes that are real problems and leave the rest.
+- Each note is a card with a checkbox, its file and line, its severity and its text, which
+  you can edit. Nothing is ticked to start: tick the notes that are real problems and
+  leave the rest.
 - The draft's summary is one more entry. Ticked, it goes in the review's overall comment.
 - Beside the Post button is a box for a message of your own, which goes first, and a
   choice of **Comment**, **Approve** or **Request changes**. Comment is always the one

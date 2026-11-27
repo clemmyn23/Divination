@@ -6,7 +6,7 @@ import { hhmm } from "../core/time.ts";
 import type { AttentionItem, Envelope, Panel, Source, View } from "../core/types.ts";
 import { isDone, tick } from "./done.ts";
 import { faviconHref } from "./favicon.ts";
-import { esc, link } from "./html.ts";
+import { esc, link, who } from "./html.ts";
 import { mascotSvg } from "./mascot.ts";
 import { isOld, staleAccordion } from "./old.ts";
 
@@ -89,7 +89,13 @@ function attentionOf(entry: PageEntry, view: View): AttentionItem[] {
 /** Why an item is waiting: its parts when it has them, lozenges and all, otherwise its plain reason. */
 function why(it: AttentionItem): string {
   if (!it.parts) return esc(it.reason);
-  return it.parts.map((part) => (typeof part === "string" ? esc(part) : `<span class="tag${part.kind === "crew" ? " crew" : ""}">${esc(part.tag)}</span>`)).join(" ");
+  return it.parts
+    .map((part) => {
+      if (typeof part === "string") return esc(part);
+      if ("who" in part) return who(part.who);
+      return `<span class="tag${part.kind === "crew" ? " crew" : ""}">${esc(part.tag)}</span>`;
+    })
+    .join(" ");
 }
 
 function attentionList(items: AttentionItem[]): string {

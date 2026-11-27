@@ -12,6 +12,11 @@ export function esc(s: unknown): string {
   return String(s).replace(/[&<>"']/g, (c) => ENTITIES[c]!);
 }
 
+/** Someone's name on a line of small print, in bold so it can be found at a glance. */
+export function who(name: string): string {
+  return `<strong class="who">${esc(name)}</strong>`;
+}
+
 /** A link that opens a channel or a message in the Slack app. Nothing else with that scheme is let through. */
 const SLACK_APP = /^slack:\/\/channel\?team=[A-Z0-9]+&id=[A-Z0-9]+(&message=\d+\.\d+)?(&thread_ts=\d+\.\d+)?$/;
 

@@ -2,7 +2,7 @@ import { hhmm } from "../../core/time.ts";
 import type { Panel, View } from "../../core/types.ts";
 import { hashOf } from "../../enrich/cache.ts";
 import { doneAccordion, isDone, tick } from "../../render/done.ts";
-import { esc, link } from "../../render/html.ts";
+import { esc, link, who } from "../../render/html.ts";
 import { isOld, staleAccordion } from "../../render/old.ts";
 import { ciMark, sizeText } from "./marks.ts";
 import { myPrsPanel } from "./mine.panel.ts";
@@ -75,11 +75,17 @@ const KINDS: [string, string][] = [
   ["REQUEST_CHANGES", "Request changes"],
 ];
 
-/** One tickable entry of the dialog: a checkbox, where it goes, and its text to edit. */
-function entry(pick: string, where: string, text: string, label: string, copy: boolean): string {
-  return `<div class="finding">
-<label class="pick"><input type="checkbox" autocomplete="off" data-pick="${esc(pick)}"> <span class="where">${esc(where)}</span></label>
-<textarea data-text autocomplete="off" rows="${copy ? 4 : 3}" aria-label="${esc(label)}">${esc(text)}</textarea>${copy ? '\n<button type="button" data-copy-text>Copy</button>' : ""}
+/**
+ * One tickable entry of the dialog: a heading row with its checkbox and where it goes,
+ * then its text to edit. A note's heading also carries its severity and a Copy button;
+ * the summary's says where it ends up instead.
+ */
+function entry(pick: string, where: string, text: string, label: string, severity?: string): string {
+  const note = severity !== undefined;
+  const tail = note ? `<span class="severity">${esc(severity)}</span>\n<button type="button" data-copy-text>Copy</button>` : '<span class="hint">goes in the overall comment</span>';
+  return `<div class="finding"${note ? ` data-severity="${esc(severity)}"` : ""}>
+<div class="note-head"><label class="pick"><input type="checkbox" autocomplete="off" data-pick="${esc(pick)}"> <span class="where">${esc(where)}</span></label> ${tail}</div>
+<textarea data-text autocomplete="off" rows="${note ? 4 : 3}" aria-label="${esc(label)}">${esc(text)}</textarea>
 </div>`;
 }
 
@@ -95,23 +101,23 @@ function entry(pick: string, where: string, text: string, label: string, copy: b
 function dialogHtml(pr: PullRequest, review: Review, posted: string): string {
   const key = reviewKey(pr);
   const count = review.findings.length;
-  const notes = review.findings.map((f, i) => entry(String(i), `${f.file}:${f.line} · ${f.severity}`, f.comment, `Note on ${f.file}:${f.line}`, true));
+  const notes = review.findings.map((f, i) => entry(String(i), `${f.file}:${f.line}`, f.comment, `Note on ${f.file}:${f.line}`, f.severity));
   const kinds = KINDS.map(
     ([value, label]) => `<label><input type="radio" autocomplete="off" name="event:${esc(key)}" value="${value}"${value === "COMMENT" ? " checked" : ""}> ${label}</label>`,
   );
   return `<dialog class="review-dialog" data-review="${esc(key)}" data-draft="${hashOf(review)}" aria-label="Review of ${esc(pr.title)}">
 <h2>${link(pr.title, pr.url)}</h2>
-<p class="meta">${esc(pr.key)} · ${esc(pr.author)} · Draft says: ${esc(review.verdict.replaceAll("_", " "))} · ${count} ${count === 1 ? "note" : "notes"}</p>
+<p class="meta">${esc(pr.key)} · ${who(pr.author)} · <span class="tag">Draft says: ${esc(review.verdict.replaceAll("_", " "))}</span> · ${count} ${count === 1 ? "note" : "notes"}</p>
 <div class="review-notes">
-${[entry("summary", "Summary · goes in the overall comment", review.summary, "Summary", false), ...notes].join("\n")}
+${[entry("summary", "Summary", review.summary, "Summary"), ...notes].join("\n")}
 </div>
 <div class="review-post">
 <textarea data-message autocomplete="off" rows="2" placeholder="Your message. It goes first." aria-label="Your message"></textarea>
 <div class="review-kind" role="radiogroup" aria-label="Kind of review">
 ${kinds.join("\n")}
 </div>
-<button type="button" data-review-post disabled>Post</button>
 <button type="button" data-review-close>Close</button>
+<button type="button" data-review-post disabled>Post</button>
 </div>
 <p class="review-status" role="status">${esc(posted)}</p>
 </dialog>`;
@@ -121,7 +127,7 @@ function meta(pr: PullRequest): string {
   const why = pr.rank.reasons.filter((r) => !SHOWN_ELSEWHERE.includes(r)).join(", ");
   const parts = [
     esc(pr.key),
-    esc(pr.author),
+    who(pr.author),
     sizeText(pr.additions, pr.deletions),
     ciMark(pr.ci),
     `<span class="tag">${esc(pr.request)}</span>`,

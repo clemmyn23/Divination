@@ -84,7 +84,7 @@ function reviewItem(pr: PullRequest): AttentionItem {
     title: pr.title,
     reason: [...pr.rank.reasons, ...(pr.byCrew ? [CREW] : [])].join(", "),
     // Who raised it comes first, with the crew lozenge beside the name it is about.
-    parts: [pr.author, ...(pr.byCrew ? [{ tag: CREW, kind: "crew" as const }] : []), { tag: pr.request }, ...(rest ? [rest] : [])],
+    parts: [{ who: pr.author }, ...(pr.byCrew ? [{ tag: CREW, kind: "crew" as const }] : []), { tag: pr.request }, ...(rest ? [rest] : [])],
     url: pr.url,
     at: pr.createdAt,
     doneKey: prDoneKey(pr),
